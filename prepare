@@ -1,0 +1,26 @@
+#!/bin/sh
+if [ $# -lt 1 ]
+then
+    echo usage "$0 <github user name>"
+    echo "no github user passed"
+    exit 3
+fi
+GITHUBUSER=$1
+{
+      echo specification.shared
+      echo specification
+      echo server.shared
+      echo angular
+      echo server
+} | while read name
+do
+    git clone git@github.com:$GITHUBUSER/$name.git
+    cd $name
+    npm install
+    echo $name
+    [[ $name =~ specification|server.shared|angular|server$ ]] && npm install ../specification.shared
+    [[ $name =~ angular|server$ ]] && npm install ../server.shared
+    [[ $name =~ server$ ]] && npm install ../specification
+    npm run build
+    cd - >/dev/null
+done
