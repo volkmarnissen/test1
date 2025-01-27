@@ -10,4 +10,5 @@ For Cypress UI tests you need to enable the host system to run  X11
 ## On mac
 xquartz from https://www.xquartz.org/
 start XQuartz application (?)
+brew install coreutils
 
