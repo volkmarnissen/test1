@@ -1,0 +1,11 @@
+{
+  "name": "@modbus2mqtt/test1",
+  "version": "1.0.0",
+  "description": "changes in modbus2mqtt",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "",
+  "license": "MIT"
+}
