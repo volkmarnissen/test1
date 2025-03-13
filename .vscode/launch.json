@@ -19,7 +19,8 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["dependencies", "pull", "--pullrequest","test3:2" ], 
+             "args": ["-p", "projects.test.json", "dependencies", "pull", 
+              "--pullrequest","test3:2" ], 
             "console": "integratedTerminal"
         }
     ]

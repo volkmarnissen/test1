@@ -130,20 +130,25 @@ parser_dependencies.set_defaults(command='dependencies')
 args = parser.parse_args()
 projectsList = projects.readprojects(args.projects)
 
-   
-match args.command:
-    case "create":
-        ii = None
-        if args.issue != None:
-            i = args.issue.split(':')
-            ii= Issue(i(0), int(i(1)))
-        createPullRequests( projectsList, ii)
-    case "dependencies":
-        pr  = projects.getPullrequestFromString(args.pullrequest)
-        for project in projectsList.projects:
-            if project.name == pr["name"]:
-                project.pullrequestid = pr['number']
-                projects.doWithProjects(projectsList,'dependencies', projectsList, args.dependencytype, project)
-                exit(0)
-        project.eprint("pullrequest not found:" + args.pullrequest)
+try:   
+    match args.command:
+        case "create":
+            ii = None
+            if args.issue != None:
+                i = args.issue.split(':')
+                ii= Issue(i(0), int(i(1)))
+            createPullRequests( projectsList, ii)
+        case "dependencies":
 
+            pr  = projects.getPullrequestFromString(args.pullrequest)
+            for project in projectsList.projects:
+                if project.name == pr["name"]:
+                    project.pullrequestid = pr['number']
+                    projects.doWithProjects(projectsList,'sync')
+                    projects.doWithProjects(projectsList,'dependencies', projectsList, args.dependencytype, project)
+                    exit(0)
+            project.eprint("pullrequest not found:" + args.pullrequest)
+except Exception as err:
+    for arg in err.args:
+        projects.eprint( arg)
+    exit(2)

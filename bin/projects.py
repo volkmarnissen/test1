@@ -92,7 +92,7 @@ def executeSyncCommand(cmdArgs: list[str], *args, **kwargs)-> str:
     out, err = result.communicate()
     result.returncode
     if result.returncode != 0:
-        raise SyncException( ' '.join(cmdArgs), out.decode("utf-8"))
+        raise SyncException( ' '.join(cmdArgs), out.decode("utf-8"),err, out)
     return out
    
 def ghapi(method:str, url:str, *args)->str:
@@ -225,16 +225,23 @@ def readpulltextProject(project:Project):
         if re.search(r'\s*$', out):
             break;
 
-def getPullrequestId(project:Project, projects:Projects):
-    js = json.loads(executeSyncCommand([ "gh", "pr", "list" , 
+def getPullrequestId(project:Project, projects:Projects, additionalFields:list[str] = None):
+    cmd = [ "gh", "pr", "list" , 
         "-R", projects.owner + "/" + project.name,
         "--json", "number" ,
         "--json", "headRefName",
-        "--json", "author"  ]))
+        "--json", "author"  ]
+    for field in additionalFields:
+        cmd.append("--json")
+        cmd.append( field )
+    js = json.loads(executeSyncCommand(cmd))
     if len(js) > 0:
         for entry in js:
             if entry['author']['login'] == project.owner and entry['headRefName'] == project.branch: 
-                return js[0]["number"]
+                if additionalFields == None:
+                    return js[0]["number"]
+                else:
+                    return js[0]
     return None
 def getpulltext( project:Project, baseowner:str, pullrequestid:int = None)->str:
     if pullrequestid == None:
@@ -295,12 +302,22 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
     with open('package.json') as json_data:
         pkgjson = json.load( json_data)
     prs = getRequiredPullrequests(prProject, projectsList.owner, prProject.name + ":" + str(prProject.pullrequestid))
-                        
+                
     for pr in prs:
+         # restrict to open PR's
         githubName = 'github:'+ projectsList.owner +'/' + pr['name']
+            
         package = '@' + projectsList.owner+ '/' +  pr['name']
         
         if 'dependencies' in pkgjson and package in pkgjson['dependencies'].keys():
+            pProject = Project(pr['name'])
+            pProject.owner = project.owner
+            pProject.branch = project.branch
+            js = getPullrequestId( pProject,projectsList,["state"])
+            # If PR is no more open, use main branch instead of PR
+            if js == None or( dependencytype == 'pull' and js['state'] not in ['OPEN', 'APPROVED']):
+                dependencytype ='remote'
+                   
             match dependencytype:
                 case "local":
                     npminstall.append( os.path.join('..',project.name))
@@ -308,15 +325,16 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
                     if checkFileExistanceInGithubBranch('modbus2mqtt', pr['name'],'main', 'package.json'):
                         npminstall.append(  githubName)
                     else:
-                        eprint("package.json is missing in modbus2mqtt/" + project.name
-                        + ".\nUnable to set remote reference in " + project.name + '/package.json'
+                        eprint("package.json is missing in modbus2mqtt/" + pr['name'] +"#main"
+                        + ".\nUnable to set remote reference in modbus2mqtt/" + project.name 
                         + "\nContinuing with invalid reference")
                 case "pull":
-                    if checkFileExistanceInGithubPullRequest('modbus2mqtt', pr['name'],str(pr['number']), 'package.json'):   
-                        npminstall.append(  githubName + '#pull/' + str(pr['number']) + '/head')  
+                    newgithubName = githubName + '#pull/' + str(pr['number']) + '/head'
+                    if checkFileExistanceInGithubPullRequest('modbus2mqtt', pr['name'],str(pr['number']), 'package.json'):
+                        npminstall.append(  newgithubName )  
                     else:
-                        eprint("package.json is missing in modbus2mqtt/" + pr['name']
-                        + ".\nUnable to set remote reference in " + pr['name'] + '/package.json'
+                        eprint("package.json is missing in " + newgithubName
+                        + ".\nUnable to set remote reference in modbus2mqtt/" + pr['name'] + '/package.json'
                         + "\nContinuing with invalid reference")
     executeSyncCommand(npminstall)
 
