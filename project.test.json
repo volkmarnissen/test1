@@ -1,0 +1,15 @@
+{
+    "owner": "modbus2mqtt",
+    "mainproject":"test3",
+    "projects": [
+    {
+      "name" : "test1"
+    },
+    {
+      "name" : "test2"
+    },
+    {
+        "name" : "test3"
+    }
+]
+}

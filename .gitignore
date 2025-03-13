@@ -128,3 +128,11 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+/test*/
+yaml-dir/
+server.shared/
+specification.shared/
+angular/
+server/
+specification/
+bin/__pycache__/
