@@ -39,7 +39,7 @@
 	],
 	"settings": {
 		"jest.disabledWorkspaceFolders": [
-			"m2m", "specification.shared", "server.shared", "angular", "modbus2mqtt.dev"
+			"m2m", "specification.shared", "server.shared", "angular", "hassio-addon-repository"
 		]
 	}
 }

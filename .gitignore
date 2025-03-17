@@ -136,3 +136,9 @@ angular/
 server/
 specification/
 bin/__pycache__/
+server/
+specification/
+angular/
+specification.shared/
+server.shared/
+hassio-addon-repository/
