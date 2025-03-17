@@ -89,9 +89,9 @@ def sync(projectsList:projects.Projects):
 def createPullRequests( projectsList:projects.Projects, issue:Issue):
     try:
         # compareProjects(projects)
-        projects.doWithProjects(projectsList,'sync')
-        projects.doWithProjects(projectsList,'push')
-        projects.doWithProjects(projectsList,'compare')
+        projects.doWithProjects(projectsList,'sync', projectsList)
+        projects.doWithProjects(projectsList,'push', projectsList)
+        projects.doWithProjects(projectsList,'compare', projectsList)
         pullProjects = getPullProjects(projectsList)
         projects.doWithProjects(projectsList,'readpulltext')
         projects.doWithProjects(projectsList,'dependencies', projectsList,"remote",None)
@@ -99,8 +99,20 @@ def createPullRequests( projectsList:projects.Projects, issue:Issue):
         projects.doWithProjects(projectsList,'createpull', projectsList, pullProjects, pulltext, issue )
         projects.doWithProjects(projectsList,'updatepulltext', projectsList, pullProjects , pulltext)
     except Exception as err:
-        projects.eprint("Creating aborted " + err.args[0])
+        for arg in err.args:
+            if type(arg) is str:
+                projects.eprint("Creating aborted " + arg)
         exit(2)
+def initProjects(branch):
+    for project in projectsList.projects:   
+        # fork will fail if project it is already forked.The error will be ignored
+        owner = projectsList.login
+        if not projects.isProjectForked(project.name ):
+            owner = projectsList.owner    
+        if not os.path.exists( project.name ):
+            projects.executeCommand(['git','clone', 'git@github.com:' + 
+            owner + '/' +project.name + '.git' ])
+    projects.doWithProjects(projectsList,'newbranch', branch)
 
 def dependencies( projectList, type:str, *args):
     mainproject = projectList['mainproject']
@@ -118,9 +130,20 @@ subparsers = parser.add_subparsers(help="sub-commands")
 
 parser.add_argument("-p", "--projects", help="projects.json file ",  nargs='?', default='projects.json', const='projects.json')
 
-parser_create = subparsers.add_parser("create", help="command [create: creates pull requests ]")
+parser_init = subparsers.add_parser("init", help="init: forks and clones repositories")
+parser_init.add_argument("-b", "--branch", help="New branch name",  nargs='?', default='main')
+parser_init.set_defaults(command='init')
+
+parser_switch = subparsers.add_parser("branch", help="branch: Switches to the given branch")
+parser_switch.add_argument("branch", help="branch name")
+parser_switch.set_defaults(command='branch')
+
+parser_sync = subparsers.add_parser("sync", help="sync: pulls main and current branch from root repositories")
+parser_sync.set_defaults(command='sync')
+
+parser_create = subparsers.add_parser("createpull", help="createpull: creates pull requests ")
 parser_create.add_argument("-i", "--issue", help="Issue number ",type = int,  nargs='?', default=None)
-parser_create.set_defaults(command='create')
+parser_create.set_defaults(command='createpull')
 
 parser_dependencies = subparsers.add_parser("dependencies", help="dependencies changes dependencies in package.json files ]")
 parser_dependencies.add_argument("dependencytype", help="command ", choices=['local','pull','remote'], default='local')
@@ -132,7 +155,14 @@ projectsList = projects.readprojects(args.projects)
 
 try:   
     match args.command:
-        case "create":
+        case "init":
+            initProjects(args.branch)
+        case "branch":
+            projects.doWithProjects(projectsList,'newbranch', args.branch)
+        case "sync":
+            projects.doWithProjects(projectsList,'sync',projectsList)
+
+        case "createpull":
             ii = None
             if args.issue != None:
                 i = args.issue.split(':')

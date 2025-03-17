@@ -1,4 +1,7 @@
-[
+{
+  "owner": "modbus2mqtt",
+  "mainproject":"server",
+  "projects": [
     {
       "name" : "specification.shared"
     },
@@ -15,3 +18,4 @@
         "name" : "server"
     }
 ]
+}

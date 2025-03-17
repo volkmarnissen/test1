@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 from dataclasses import dataclass
 import functools
+import io
 import json
 import argparse
 import os
 import subprocess
 import sys
 import re
+import time
 from typing import Any, Dict
 import typing
-
-owner = ""
+from threading import Thread
 
 @dataclass
 class PullTexts:
@@ -38,9 +39,9 @@ class Project:
         if not self._is_valid_operand(other):
             return NotImplemented
         return self.name.lower() < other.name.lower
-    owner: str
     name: str
     branch: str
+    isForked: bool = False
     remoteBranch: str = None
     localChanges: int
     gitChanges: int
@@ -54,6 +55,7 @@ class Projects:
         self.owner = para['owner']
         self.projects = para['projects']
     owner: str
+    login:str
     projects: ProjectList
     pulltext: PullTexts = None
 
@@ -84,15 +86,27 @@ def executeCommand(cmdArgs: list[str], *args, **kwargs)-> str:
             return '{"status": "OK"}'.encode('utf-8')
     return out
 
+class StreamThread ( Thread ):
+    def __init__(self, buffer):
+        Thread.__init__(self)
+        self.buffer = buffer
+    def run ( self ):
+        while 1:
+            line = self.buffer.readline()
+            eprint(line,end="")
+            sys.stderr.flush()
+            if line == '':
+                break
+            
 def executeSyncCommand(cmdArgs: list[str], *args, **kwargs)-> str:
-    result = subprocess.Popen(cmdArgs,
+    proc = subprocess.Popen(cmdArgs,
 	cwd=os.getcwd(),
  	stdout=subprocess.PIPE,
  	stderr=subprocess.PIPE) 
-    out, err = result.communicate()
-    result.returncode
-    if result.returncode != 0:
-        raise SyncException( ' '.join(cmdArgs), out.decode("utf-8"),err, out)
+    out, err = proc.communicate()
+    proc.returncode
+    if proc.returncode != 0:
+        raise SyncException( ' '.join(cmdArgs), out.decode("utf-8"),err.decode("utf-8"))
     return out
    
 def ghapi(method:str, url:str, *args)->str:
@@ -110,49 +124,96 @@ def ghcompare( repo:str, owner:str, base:str, head:str, *args, **kwargs)->str:
     return ghapi( 'GET', url )
 def json2Projects(dct:Any ):
     if 'name' in dct:
-        return  Project( dct['name'])
+        p =   Project( dct['name'])
+        return p
     return dct
+
+def isProjectForked( projectName )->bool:
+    forked = json.loads(executeCommand(['gh', 'repo' , 'list', '--fork', '--json', 'name'] ))
+    for project in forked:
+        if project['name'] == projectName :
+            return True
+    return False
+def forkProject( projectName, owner ):
+   
+    if '' != executeSyncCommand(['gh', 'repo' , 'fork',  owner + '/' + projectName]):
+            time.sleep(3)
+
 def readprojects(projectsFile)->Projects:
     try:
         input_file = open (projectsFile)
         jsonDict:Dict[str,Any] =  json.load(input_file, object_hook=json2Projects)
-        return Projects(jsonDict)
+        js = json.loads(ghapi('GET', '/user'))
+        p =  Projects(jsonDict)
+        p.login = js['login']
+        return p
     except Exception as e:
         print("something went wrong " , e)
+def getLocalChanges()->int:
+    return int(subprocess.getoutput('git status --porcelain| wc -l')) 
+   
 # syncs main from original github source to local git branch (E.g. 'feature')
-def syncProject(project: Project):
+def syncProject(project: Project, projects:Projects):
+
     project.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
+    js = json.loads(ghapi('GET', '/user'))
     out = executeCommand(['git','remote','show','origin'])
     match = re.search(r'.*Push *URL:[^:]*:([^\/]*)', out.decode("utf-8"))
-    project.owner = match.group(1)
     match = re.search(r'.*Remote[^:]*:[\r\n]+ *([^ ]*)', out.decode("utf-8"))
     project.remoteBranch = match.group(1)
+    project.isForked = isProjectForked(project.name )
     # Sync owners github repository main branch from modbus2mqtt main branch
-    ownerrepo = project.owner + '/' + project.name
-    executeSyncCommand( ['gh','repo','sync', ownerrepo ,  '-b' , 'main' ]  ).decode("utf-8")
-    project.localChanges = int(subprocess.getoutput('git status --porcelain| wc -l')) 
-    # download all branches from owners github to local git
+    # Only the main branch needs to be synced from github
     executeSyncCommand(['git','switch', project.remoteBranch ]).decode("utf-8")
+    try:
+        # ghapi('GET', ownerrepo+ '/merge-upstream', '-f', 'branch=main'
+        if project.isForked:
+            executeSyncCommand( ['gh','repo','sync', projects.login + '/' + project.name ,  '-b' , 'main' ]  ).decode("utf-8")
+        # There is no need to sync the gh feature branch, because git merge main will update git feature branch
+        # Git feature branch will be pushed and merged to github during createpull this will pull the merge also
+    except Exception as err:
+        for arg in err.args:
+            eprint("Sync aborted " + arg)
+    # download all branches from owners github to local git
+    executeSyncCommand(['git','fetch']).decode("utf-8")
+    
     executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
+    project.localChanges = getLocalChanges()
+     
     executeSyncCommand( ['git','merge', 'main'] ).decode("utf-8")
     out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
     project.gitChanges = out.count('\n')
 
-def pushProject(project:Project):
+def pushProject(project:Project, projects:Projects):
+    # Check if login/project repository exists in github
+    if project.gitChanges == 0:
+        return
+    
+    if not isProjectForked( project.name):
+        forkProject(project.name, projects.owner)
+
+    js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
+    match = re.search(r'' + projects.login + '/', js)
+    if not match:
+        executeSyncCommand(['git', 'remote', 'set-url', 'origin', 'git@github.com:' + projects.login + '/'+ project.name + '.git' ])
+
     # push local git branch to remote servers feature branch
     executeSyncCommand(['git','push', 'origin', project.branch]).decode("utf-8")
 
-def compareProject( project:Project):
+def compareProject( project:Project, projects:Projects):
     # compares git current content with remote branch 
     project.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
     showOrigin = executeCommand( [ 'git', '-v', 'show', 'origin' ])
-
+    project.hasChanges = False
     project.localChanges = int(subprocess.getoutput('git status --porcelain| wc -l'))
-    js = ghcompare( project.name,"modbus2mqtt","main", project.owner + ":" + project.branch)
-    cmpResult = json.loads(js)
-    project.hasChanges =  cmpResult['status'] == 'ahead'
+    if project.isForked:
+        js = ghcompare( project.name,projects.owner,"main", projects.login + ":" + project.branch)
+        cmpResult = json.loads(js)
+        project.hasChanges =  cmpResult['status'] == 'ahead'
     
 def createpullProject( project: Project, projectsList:Projects, pullProjects:ProjectList, pullText:PullTexts, issuenumber:int):
+    if project.gitChanges == 0:
+        return
     args = []
     if pullText != None:
         args.append("-f"); args.append( "title=" + pullText.topic)
@@ -164,7 +225,8 @@ def createpullProject( project: Project, projectsList:Projects, pullProjects:Pro
     else:
         args.append("-f"); args.append( "issue=" + str( issuenumber))
         args.append("-f"); args.append( 'draft=false')
-    args.append("-f"); args.append( "head=" + project.owner + ":" + project.branch)
+    args.append("-f"); args.append( "head=" + projectsList.login + ":" + project.branch)
+    #args.append("-f"); args.append( "head=" + project.branch)
     args.append("-f"); args.append( "base=main")  
     try:      
         js = json.loads(ghapi('POST','/repos/'+ projectsList.owner +'/' + project.name + '/pulls',args))
@@ -231,13 +293,14 @@ def getPullrequestId(project:Project, projects:Projects, additionalFields:list[s
         "--json", "number" ,
         "--json", "headRefName",
         "--json", "author"  ]
-    for field in additionalFields:
-        cmd.append("--json")
-        cmd.append( field )
+    if additionalFields != None:
+        for field in additionalFields:
+            cmd.append("--json")
+            cmd.append( field )
     js = json.loads(executeSyncCommand(cmd))
     if len(js) > 0:
         for entry in js:
-            if entry['author']['login'] == project.owner and entry['headRefName'] == project.branch: 
+            if entry['author']['login'] == projects.login and entry['headRefName'] == project.branch: 
                 if additionalFields == None:
                     return js[0]["number"]
                 else:
@@ -291,18 +354,33 @@ def updatepulltextProject(project:Project, projectsList: Projects, pullProjects:
         args = [ "gh", "pr", "edit", str( project.pullrequestid), 
             "-R", projectsList.owner + "/" + project.name,
             "--body", pulltext + "\n" + requiredText ]
-        eprint(' '.join(args))
         executeSyncCommand(args)
 
 def dependenciesProject(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project = None):
-    if prProject == None:
-        SyncException("pull requires pull request parameter -r")             
+    if project.gitChanges == 0:
+        return
+    prs: list[Dict[str, int]] = []
+    if dependencytype == 'pull':
+        prs = getRequiredPullrequests(prProject, projectsList.owner, prProject.name + ":" + str(prProject.pullrequestid))
+        if prProject == None:
+            SyncException("pull requires pull request parameter -r")
+    else: # do it for all projects
+        for pr in projectsList.projects:
+            prs.append({"name":pr.name, "number":pr.pullrequestid})           
     npminstall =['npm', 'install']
+    npminstallargs = []
+    npmuninstallargs = []
     pkgjson = []
-    with open('package.json') as json_data:
-        pkgjson = json.load( json_data)
-    prs = getRequiredPullrequests(prProject, projectsList.owner, prProject.name + ":" + str(prProject.pullrequestid))
-                
+    try:
+        with open('package.json') as json_data:
+            pkgjson = json.load( json_data)
+    except Exception as err:
+        msg = ""
+        for arg in err.args:
+            if type(arg) is str:
+                msg = msg + arg
+        raise SyncException("Try to open package.json in " + project.name, msg)
+
     for pr in prs:
          # restrict to open PR's
         githubName = 'github:'+ projectsList.owner +'/' + pr['name']
@@ -311,7 +389,6 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
         
         if 'dependencies' in pkgjson and package in pkgjson['dependencies'].keys():
             pProject = Project(pr['name'])
-            pProject.owner = project.owner
             pProject.branch = project.branch
             js = getPullrequestId( pProject,projectsList,["state"])
             # If PR is no more open, use main branch instead of PR
@@ -320,10 +397,12 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
                    
             match dependencytype:
                 case "local":
-                    npminstall.append( os.path.join('..',project.name))
+                    npminstallargs.append( os.path.join('..',pr.name))
+                    npmuninstallargs.append( package )
                 case "remote":
                     if checkFileExistanceInGithubBranch('modbus2mqtt', pr['name'],'main', 'package.json'):
-                        npminstall.append(  githubName)
+                        npminstallargs.append(  githubName)
+                        npmuninstallargs.append( package )
                     else:
                         eprint("package.json is missing in modbus2mqtt/" + pr['name'] +"#main"
                         + ".\nUnable to set remote reference in modbus2mqtt/" + project.name 
@@ -331,12 +410,21 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
                 case "pull":
                     newgithubName = githubName + '#pull/' + str(pr['number']) + '/head'
                     if checkFileExistanceInGithubPullRequest('modbus2mqtt', pr['name'],str(pr['number']), 'package.json'):
-                        npminstall.append(  newgithubName )  
+                        npminstallargs.append(  newgithubName )  
+                        npmuninstallargs.append( package )
                     else:
                         eprint("package.json is missing in " + newgithubName
                         + ".\nUnable to set remote reference in modbus2mqtt/" + pr['name'] + '/package.json'
                         + "\nContinuing with invalid reference")
-    executeSyncCommand(npminstall)
+    if len(npmuninstallargs ) > 0:
+        eprint( "npm uninstall in " + project.name)
+        executeSyncCommand(["npm", "uninstall"] + npmuninstallargs)
+    eprint( "npm install in " + project.name)      
+    executeSyncCommand(npminstall + npminstallargs)
+    eprint( "npm install in " + project.name + " finished   ")
+    project.localChanges = getLocalChanges()
+    if project.localChanges > 0:
+        raise SyncException("File(s) have been updated in " + project.name + ".\nThere are local changes.\nPlease commit them first")
 
 projectFunctions = {
     'compare' : compareProject,
@@ -352,6 +440,7 @@ projectFunctions = {
 
 
 def doWithProjects( projects:Projects, command:str, *args:Any ): 
+    eprint("step: " + command )
     pwd = os.getcwd()
     for project in projects.projects:
         os.chdir(project.name)

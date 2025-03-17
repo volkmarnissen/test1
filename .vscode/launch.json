@@ -5,12 +5,23 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python-Debugger: Aktuelle Datei",
+            "name": "pull create",
             "type": "debugpy",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "program": "${file}",
-             "args": ["create" ], 
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "projects.test.json", "createpull" ], 
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "pulls sync",
+            
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "projects.test.json", "sync" ], 
             "console": "integratedTerminal"
         },
         {
@@ -21,6 +32,15 @@
             "program": "${workspaceFolder}/bin/pulls.py",
              "args": ["-p", "projects.test.json", "dependencies", "pull", 
               "--pullrequest","test3:2" ], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "projects: prepare, create fork and clone",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/prepare.py",
+             "args": [], 
             "console": "integratedTerminal"
         }
     ]
