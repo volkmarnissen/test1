@@ -186,10 +186,12 @@ def syncProject(project: Project, projects:Projects):
                     raise err
                 else:
                     executeSyncCommand(['git','branch','--set-upstream-to=origin/main', project.branch ])
+    else:
+        executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.remoteBranch, project.branch ])
 
     executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
     project.localChanges = getLocalChanges()
-    executeSyncCommand(['git','fetch']).decode("utf-8")
+    executeSyncCommand(['git','pull']).decode("utf-8")
      
     executeSyncCommand( ['git','merge', 'main'] ).decode("utf-8")
     out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
@@ -233,9 +235,19 @@ def compareProject( project:Project, projects:Projects):
     project.hasChanges = False
     project.localChanges = int(subprocess.getoutput('git status --porcelain| wc -l'))
     if project.isForked:
-        js = ghcompare( project.name,projects.owner,"main", projects.login + ":" + project.branch)
-        cmpResult = json.loads(js)
-        project.hasChanges =  cmpResult['status'] == 'ahead'
+        # does the remote branch exist?
+        out = executeSyncCommand(['git','ls-remote','--heads','origin','refs/heads/' + project.branch ]).decode ("utf-8")
+        if  out !='':
+            # The remote branch exists
+            js = ghcompare( project.name,projects.owner,"main", projects.login + ":" + project.branch)
+            cmpResult = json.loads(js)
+            project.hasChanges =  cmpResult['status'] == 'ahead'        
+        else:
+            # No remote branch compare main and feature branch with git
+            out = executeSyncCommand(['git','diff', 'main']).decode("utf-8")
+            project.hasChanges = out.count('\n') > 0
+            
+            
     
 def createpullProject( project: Project, projectsList:Projects, pullProjects:ProjectList, pullText:PullTexts, issuenumber:int):
     if project.gitChanges == 0:
@@ -257,7 +269,7 @@ def createpullProject( project: Project, projectsList:Projects, pullProjects:Pro
     try:      
         js = json.loads(ghapi('POST','/repos/'+ projectsList.owner +'/' + project.name + '/pulls',args))
         # Append "requires:" text
-        project.pullrequestid = js['id']
+        project.pullrequestid = js['number']
     except SyncException as err:
         if len(args) and err.args[1] != "":
             js = json.loads(err.args[1])
