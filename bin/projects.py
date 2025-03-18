@@ -67,7 +67,6 @@ def eprint(*args, **kwargs):
 
 def executeCommand(cmdArgs: list[str], *args, **kwargs)-> str:
     ignoreErrors = kwargs.get('ignoreErrors', None)
-    eprint( ' '.join( cmdArgs))
     result = subprocess.Popen(cmdArgs,
 	cwd=os.getcwd(),
  	stdout=subprocess.PIPE,
@@ -389,11 +388,9 @@ def readPackageJson( dir:str)->Dict[str,any]:
         with open(dir) as json_data:
             return  json.load( json_data)
     except Exception as err:
-        msg = ""
-        for arg in err.args:
-            if type(arg) is str:
-                msg = msg + arg
-        raise SyncException("Try to open package.json in " + dir, msg)
+        eprint("Exception read " )
+        msg = str(err.args)
+        raise SyncException("Try to open package.json in " + os.getcwd() + '\n' +  msg)
 def updatePackageJsonReferences(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project):
     prs: list[Dict[str, int]] = []
     if dependencytype == 'pull':
@@ -455,9 +452,9 @@ def updatePackageJsonReferences(project:Project,  projectsList: Projects,depende
     return len(npminstallargs ) > 0
 def tagExists(tagname:str)->bool:
     try:
-        executeSyncCommand("git","tag", "-l", tagname)
-        return True
-    except:
+        return executeSyncCommand(["git","tag", "-l", tagname]).decode("utf-8").count('\n') > 0
+    except Exception as err:
+        eprint( "tag doesn't exists", err.args[0])
         return False
 
 def ensureNewPkgJsonVersion():
@@ -474,37 +471,39 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
 
     if dependencytype == 'release':
         # find unreleased commits 
-        out = executeSyncCommand(["git", "log", "--oneline", "--first-parent",  "main", "^release"])
+        out = executeSyncCommand(["git", "log", "--oneline", "--first-parent",  "main", "^release"]).decode("utf-8")
         changedInMain = out.count('\n')
         if changedInMain >0:
             executeSyncCommand( ['git','merge', 'main'] )
             # makes sure, the version number in local pgkJson is new
             ensureNewPkgJsonVersion()
         # local changes are either new version number or updated dependencies
-        if  getLocalChanges():
+        if  getLocalChanges() > 0:
+            
             versionTag = ensureNewPkgJsonVersion()
-            executeSyncCommand("git", "add", ".")
-            executeSyncCommand("git", "commit", "-m" , "Release " + versionTag )
+            executeSyncCommand(["git", "add", "."])
+            executeSyncCommand(["git", "commit", "-m" , "Release " + versionTag] )
         # May be the version number is up to date, but the tag doesn't exist
         versionTag = "v" + readPackageJson('package.json')['version']                    
         if  not tagExists(versionTag):
-            executeSyncCommand("git", "tag", versionTag )
-            executeSyncCommand("git", "push", "--tags", "origin" )
+            executeSyncCommand(["git", "tag", versionTag] )
+            executeSyncCommand(["git", "push", "--atomic", "origin" , "release", versionTag])
     else:
         project.localChanges = getLocalChanges()
         if project.localChanges > 0:
             raise SyncException("File(s) have been updated in " + project.name + ".\nThere are local changes.\nPlease commit them first")
+        
 def prepareGitForReleaseProject(project:Project,  projectsList: Projects):
     if projectsList.login != projectsList.owner:
-       raise SyncException("Release is allowed for " + projectsList.owner + "only")
+       raise SyncException("Release is allowed for " + projectsList.owner + " only")
     js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
     match = re.search(r'' + projectsList.owner + '/', js)
     if not match:
-       raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name + "only")
+       raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name )
     js = executeSyncCommand(['git', 'branch', '-v']).decode("utf-8")
-    match = re.search(r'^\s*release', js)
+    match = re.search(r'\*\s*release', js)
     if not match:
-        raise SyncException("Git remote branch is not 'release' in " + projectsList.owner + '/' + project.name + "only")
+        raise SyncException("Git remote branch is not 'release' in " + projectsList.owner + '/' + project.name )
     
 projectFunctions = {
     'compare' : compareProject,
