@@ -151,9 +151,16 @@ def readprojects(projectsFile)->Projects:
         print("something went wrong " , e)
 def getLocalChanges()->int:
     return int(subprocess.getoutput('git status --porcelain| wc -l')) 
-   
+def testProject(project: Project, projects:Projects):
+    executeSyncCommand(["npm", "run", "test"])   
+
 # syncs main from original github source to local git branch (E.g. 'feature')
 def syncProject(project: Project, projects:Projects):
+    project.isForked = isProjectForked(project.name)
+    if project.isForked:
+        executeSyncCommand( ['git', 'remote', 'set-url', 'origin', 'git@github.com:' + projects.login + '/' + project.name + '.git' ]  )
+    else:
+        executeSyncCommand(['git', 'remote', 'set-url', 'origin', 'git@github.com:' + projects.owner + '/'+ project.name + '.git' ])
 
     project.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
     js = json.loads(ghapi('GET', '/user'))
@@ -161,28 +168,48 @@ def syncProject(project: Project, projects:Projects):
     match = re.search(r'.*Push *URL:[^:]*:([^\/]*)', out.decode("utf-8"))
     match = re.search(r'.*Remote[^:]*:[\r\n]+ *([^ ]*)', out.decode("utf-8"))
     project.remoteBranch = match.group(1)
-    project.isForked = isProjectForked(project.name )
     # Sync owners github repository main branch from modbus2mqtt main branch
     # Only the main branch needs to be synced from github
-    executeSyncCommand(['git','switch', project.remoteBranch ]).decode("utf-8")
-    try:
-        # ghapi('GET', ownerrepo+ '/merge-upstream', '-f', 'branch=main'
-        if project.isForked:
-            executeSyncCommand( ['gh','repo','sync', projects.login + '/' + project.name ,  '-b' , 'main' ]  ).decode("utf-8")
-        # There is no need to sync the gh feature branch, because git merge main will update git feature branch
-        # Git feature branch will be pushed and merged to github during createpull this will pull the merge also
-    except Exception as err:
-        for arg in err.args:
-            eprint("Sync aborted " + arg)
-    # download all branches from owners github to local git
-    executeSyncCommand(['git','fetch']).decode("utf-8")
-    
+    executeSyncCommand(['git','switch', 'main' ]).decode("utf-8")
+    # ghapi('GET', ownerrepo+ '/merge-upstream', '-f', 'branch=main'
+    if project.isForked:
+        executeSyncCommand( ['gh','repo','sync', projects.login + '/' + project.name ,  '-b' , 'main' ]  ).decode("utf-8")
+        # download all branches from owners github to local git main branch
+        try:
+            ghapi('GET', '/repos/' + projects.login + '/' + project.name + '/branches/' + project.branch)
+            executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
+            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.branch, project.branch ])
+            executeSyncCommand(['git','pull']).decode("utf-8")
+        except SyncException as err:
+            if  err.args[1] != "":
+                js = json.loads(err.args[1])
+                if not js['message'].startswith("Branch not found"):
+                    raise err
+                else:
+                    executeSyncCommand(['git','branch','--set-upstream-to=origin/main', project.branch ])
+
     executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
     project.localChanges = getLocalChanges()
+    executeSyncCommand(['git','fetch']).decode("utf-8")
      
     executeSyncCommand( ['git','merge', 'main'] ).decode("utf-8")
     out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
     project.gitChanges = out.count('\n')
+
+# syncs main from original github source to local git branch (E.g. 'feature')
+def syncpullProject(project: Project, projects:Projects, prs:Dict[str,int], branch:str):
+    executeSyncCommand(['git', 'remote', 'set-url', 'origin', 'git@github.com:' + projects.owner + '/'+ project.name + '.git' ])
+                
+    for pr in prs:
+        found = False
+        if not found and project.name == pr["name"]:
+            found = True
+            executeSyncCommand(['git', 'fetch' 'origin', 'pull/' + str(pr['number'])+ '/head:' + branch ])
+            executeSyncCommand(['git','switch', branch])
+    if not found:
+        #sync to main branch
+        executeSyncCommand(['git', 'fetch' 'origin', 'main'])
+        executeSyncCommand(['git', 'checkout', 'main'])
 
 def pushProject(project:Project, projects:Projects):
     # Check if login/project repository exists in github
@@ -333,9 +360,11 @@ def getRequiredPullrequests( project:Project, baseowner:str, pullrequest:str)->l
         if len(match.groups()) == 1:
             prtexts = match.groups()[0].split(', ')
             for prtext in prtexts:
-                pr = prtext.split(':')
-                if len(pr) == 2:
-                    rc.append({ "name":pr[0], "number":int(pr[1])})
+                prx = prtext.split(':')
+                if len(prx) == 2:
+                    rc.append({ "name":prx[0], "number":int(prx[1])})
+        else:
+            rc.append({ "name":pr[0], "number":int(pr[1])})
     return rc
 
 def updatepulltextProject(project:Project, projectsList: Projects, pullProjects:ProjectList, pullText:str):
@@ -355,10 +384,17 @@ def updatepulltextProject(project:Project, projectsList: Projects, pullProjects:
             "-R", projectsList.owner + "/" + project.name,
             "--body", pulltext + "\n" + requiredText ]
         executeSyncCommand(args)
-
-def dependenciesProject(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project = None):
-    if project.gitChanges == 0:
-        return
+def readPackageJson( dir:str)->Dict[str,any]:
+    try:
+        with open(dir) as json_data:
+            return  json.load( json_data)
+    except Exception as err:
+        msg = ""
+        for arg in err.args:
+            if type(arg) is str:
+                msg = msg + arg
+        raise SyncException("Try to open package.json in " + dir, msg)
+def updatePackageJsonReferences(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project):
     prs: list[Dict[str, int]] = []
     if dependencytype == 'pull':
         prs = getRequiredPullrequests(prProject, projectsList.owner, prProject.name + ":" + str(prProject.pullrequestid))
@@ -370,17 +406,8 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
     npminstall =['npm', 'install']
     npminstallargs = []
     npmuninstallargs = []
-    pkgjson = []
-    try:
-        with open('package.json') as json_data:
-            pkgjson = json.load( json_data)
-    except Exception as err:
-        msg = ""
-        for arg in err.args:
-            if type(arg) is str:
-                msg = msg + arg
-        raise SyncException("Try to open package.json in " + project.name, msg)
-
+    pkgjson = readPackageJson('package.json')
+    
     for pr in prs:
          # restrict to open PR's
         githubName = 'github:'+ projectsList.owner +'/' + pr['name']
@@ -392,7 +419,7 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
             pProject.branch = project.branch
             js = getPullrequestId( pProject,projectsList,["state"])
             # If PR is no more open, use main branch instead of PR
-            if js == None or( dependencytype == 'pull' and js['state'] not in ['OPEN', 'APPROVED']):
+            if ( js == None and dependencytype == 'local') or( dependencytype == 'pull' and js['state'] not in ['OPEN', 'APPROVED']):
                 dependencytype ='remote'
                    
             match dependencytype:
@@ -407,6 +434,12 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
                         eprint("package.json is missing in modbus2mqtt/" + pr['name'] +"#main"
                         + ".\nUnable to set remote reference in modbus2mqtt/" + project.name 
                         + "\nContinuing with invalid reference")
+                case "release":
+                    # read package.json's version number build version tag
+                    versionTag = "v" + readPackageJson(os.path.join('..', pr['name'] ,'package.json'))['version']
+                    releaseName = 'github:'+ projectsList.owner +'/' + pr['name']+ '#' +versionTag
+                    npminstallargs.append(  releaseName)
+                    npmuninstallargs.append( package )                    
                 case "pull":
                     newgithubName = githubName + '#pull/' + str(pr['number']) + '/head'
                     if checkFileExistanceInGithubPullRequest('modbus2mqtt', pr['name'],str(pr['number']), 'package.json'):
@@ -417,25 +450,74 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
                         + ".\nUnable to set remote reference in modbus2mqtt/" + pr['name'] + '/package.json'
                         + "\nContinuing with invalid reference")
     if len(npmuninstallargs ) > 0:
-        eprint( "npm uninstall in " + project.name)
         executeSyncCommand(["npm", "uninstall"] + npmuninstallargs)
-    eprint( "npm install in " + project.name)      
     executeSyncCommand(npminstall + npminstallargs)
-    eprint( "npm install in " + project.name + " finished   ")
-    project.localChanges = getLocalChanges()
-    if project.localChanges > 0:
-        raise SyncException("File(s) have been updated in " + project.name + ".\nThere are local changes.\nPlease commit them first")
+    return len(npminstallargs ) > 0
+def tagExists(tagname:str)->bool:
+    try:
+        executeSyncCommand("git","tag", "-l", tagname)
+        return True
+    except:
+        return False
 
+def ensureNewPkgJsonVersion():
+    versionTag = "v" + readPackageJson('package.json')['version']        
+    if tagExists(versionTag):
+        executeSyncCommand("npm", "--no-git-tag-version", "version", "patch")
+        return "v" + readPackageJson('package.json')['version']        
+    return versionTag
+
+def dependenciesProject(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project = None):
+    updatePackageJsonReferences(project, projectsList, dependencytype, prProject)
+    out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
+    project.gitChanges = out.count('\n')
+
+    if dependencytype == 'release':
+        # find unreleased commits 
+        out = executeSyncCommand(["git", "log", "--oneline", "--first-parent",  "main", "^release"])
+        changedInMain = out.count('\n')
+        if changedInMain >0:
+            executeSyncCommand( ['git','merge', 'main'] )
+            # makes sure, the version number in local pgkJson is new
+            ensureNewPkgJsonVersion()
+        # local changes are either new version number or updated dependencies
+        if  getLocalChanges():
+            versionTag = ensureNewPkgJsonVersion()
+            executeSyncCommand("git", "add", ".")
+            executeSyncCommand("git", "commit", "-m" , "Release " + versionTag )
+        # May be the version number is up to date, but the tag doesn't exist
+        versionTag = "v" + readPackageJson('package.json')['version']                    
+        if  not tagExists(versionTag):
+            executeSyncCommand("git", "tag", versionTag )
+            executeSyncCommand("git", "push", "--tags", "origin" )
+    else:
+        project.localChanges = getLocalChanges()
+        if project.localChanges > 0:
+            raise SyncException("File(s) have been updated in " + project.name + ".\nThere are local changes.\nPlease commit them first")
+def prepareGitForReleaseProject(project:Project,  projectsList: Projects):
+    if projectsList.login != projectsList.owner:
+       raise SyncException("Release is allowed for " + projectsList.owner + "only")
+    js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
+    match = re.search(r'' + projectsList.owner + '/', js)
+    if not match:
+       raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name + "only")
+    js = executeSyncCommand(['git', 'branch', '-v']).decode("utf-8")
+    match = re.search(r'^\s*release', js)
+    if not match:
+        raise SyncException("Git remote branch is not 'release' in " + projectsList.owner + '/' + project.name + "only")
+    
 projectFunctions = {
     'compare' : compareProject,
     'sync' : syncProject,
+    'syncpull': syncpullProject,
+    'test': testProject,
     'push' : pushProject,
     'createpull' : createpullProject,
     'newbranch': newBranch,
     'readpulltext': readpulltextProject,
     'dependencies': dependenciesProject,
     'updatepulltext': updatepulltextProject,
- 
+    'prepareGitForRelease': prepareGitForReleaseProject,
 }
 
 

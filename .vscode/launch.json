@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "pull init",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "projects.test.json", "init", "-b", "feature" ], 
+            "console": "integratedTerminal"
+        },
+        {
             "name": "pull create",
             "type": "debugpy",
             "request": "launch",
@@ -25,6 +34,24 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "pulls dependencies remote",            
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "projects.test.json", "dependencies", "remote" ], 
+            "console": "integratedTerminal"
+        }, 
+        {
+            "name": "pulls release",            
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "projects.test.json", "release" ], 
+            "console": "integratedTerminal"
+        },         
+        {
             "name": "pulls dependency with pullrequest",
             "type": "debugpy",
             "request": "launch",
@@ -33,15 +60,7 @@
              "args": ["-p", "projects.test.json", "dependencies", "pull", 
               "--pullrequest","test3:2" ], 
             "console": "integratedTerminal"
-        },
-        {
-            "name": "projects: prepare, create fork and clone",
-            "type": "debugpy",
-            "request": "launch",
-            "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/bin/prepare.py",
-             "args": [], 
-            "console": "integratedTerminal"
         }
+
     ]
 }

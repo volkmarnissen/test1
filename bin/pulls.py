@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 import os
 import projects
+from typing import Dict
 
 class PullException(Exception):
     pass
@@ -138,9 +139,18 @@ parser_switch = subparsers.add_parser("branch", help="branch: Switches to the gi
 parser_switch.add_argument("branch", help="branch name")
 parser_switch.set_defaults(command='branch')
 
+parser_syncpull = subparsers.add_parser("syncpull", help="sync: pull request from root root repositories")
+parser_syncpull.set_defaults(command='syncpull')
+parser_syncpull.add_argument("pullrequest", help="Pull request <project name>:<number> in project  e.g 'angular:14'" , type= str)
+parser_syncpull.add_argument("branch", help="New branch for the Pull request " , type= str)
+
 parser_sync = subparsers.add_parser("sync", help="sync: pulls main and current branch from root repositories")
 parser_sync.set_defaults(command='sync')
 
+parser_test = subparsers.add_parser("test", help="test: execute npm test for all projects")
+parser_test.set_defaults(command='test')
+parser_release = subparsers.add_parser("release", help="releases all projects")
+parser_release.set_defaults(command='release')
 parser_create = subparsers.add_parser("createpull", help="createpull: creates pull requests ")
 parser_create.add_argument("-i", "--issue", help="Issue number ",type = int,  nargs='?', default=None)
 parser_create.set_defaults(command='createpull')
@@ -161,7 +171,12 @@ try:
             projects.doWithProjects(projectsList,'newbranch', args.branch)
         case "sync":
             projects.doWithProjects(projectsList,'sync',projectsList)
-
+        case "syncpull":
+            pr  = projects.getPullrequestFromString(args.pullrequest)
+            prs = projects.getRequiredPullrequests(projects.Project(pr['name']), projectsList.owner, pr['name'] + ":" + str(pr['number']))
+            projects.doWithProjects(projectsList,'syncpull',projectsList, prs, args.branch)
+        case "test":
+                    projects.doWithProjects(projectsList,'test')
         case "createpull":
             ii = None
             if args.issue != None:
@@ -169,15 +184,20 @@ try:
                 ii= Issue(i(0), int(i(1)))
             createPullRequests( projectsList, ii)
         case "dependencies":
+            if args.dependencytype == 'pull':
+                pr  = projects.getPullrequestFromString(args.pullrequest)
+                for project in projectsList.projects:
+                    if project.name == pr["name"]:
+                        project.pullrequestid = pr['number']
+                        projects.doWithProjects(projectsList,'sync')
+                        projects.doWithProjects(projectsList,'dependencies', projectsList, args.dependencytype, project)
+                        exit(0)
+                project.eprint("pullrequest not found:" + args.pullrequest)
+        case "release":
+                projects.doWithProjects(projectsList,'prepareGitForRelease', projectsList )
+                projects.doWithProjects(projectsList,'sync',projectsList)
+                projects.doWithProjects(projectsList,'dependencies', projectsList, 'release')
 
-            pr  = projects.getPullrequestFromString(args.pullrequest)
-            for project in projectsList.projects:
-                if project.name == pr["name"]:
-                    project.pullrequestid = pr['number']
-                    projects.doWithProjects(projectsList,'sync')
-                    projects.doWithProjects(projectsList,'dependencies', projectsList, args.dependencytype, project)
-                    exit(0)
-            project.eprint("pullrequest not found:" + args.pullrequest)
 except Exception as err:
     for arg in err.args:
         projects.eprint( arg)
