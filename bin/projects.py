@@ -180,7 +180,7 @@ def syncProject(project: Project, projects:Projects):
             ghapi('GET', '/repos/' + projects.login + '/' + project.name + '/branches/' + project.branch)
             executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
             executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.branch, project.branch ])
-            executeSyncCommand(['git','pull']).decode("utf-8")
+            executeSyncCommand(['git','pull','--rebase']).decode("utf-8")
         except SyncException as err:
             if  err.args[0] != "":
                 js = json.loads(err.args[2])
@@ -189,11 +189,14 @@ def syncProject(project: Project, projects:Projects):
                 else:
                     executeSyncCommand(['git','branch','--set-upstream-to=origin/main', project.branch ])
     else:
-        executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.remoteBranch, project.branch ])
+        if projects.owner == projects.login:
+            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.branch, project.branch ])
+        else:
+            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.remoteBranch, project.branch ])
 
     executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
     project.localChanges = getLocalChanges()
-    executeSyncCommand(['git','pull']).decode("utf-8")
+    executeSyncCommand(['git','pull', '--rebase']).decode("utf-8")
      
     executeSyncCommand( ['git','merge', 'main'] ).decode("utf-8")
     out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
@@ -414,7 +417,6 @@ def updatePackageJsonReferences(project:Project,  projectsList: Projects,depende
     else: # do it for all projects
         for pr in projectsList.projects:
             prs.append({"name":pr.name, "number":pr.pullrequestid})           
-    npminstall =['npm', 'install']
     npminstallargs = []
     npmuninstallargs = []
     pkgjson = readPackageJson('package.json')
@@ -461,12 +463,12 @@ def updatePackageJsonReferences(project:Project,  projectsList: Projects,depende
                         npmuninstallargs.append( package )
                     else:
                         eprint("package.json is missing in " + newgithubName
-                        + ".\nUnable to set remote reference in modbus2mqtt/" + pr['name'] + '/package.json'
+                        + ".\nUnable to set remote reference                                                                                                                                                                                                                                in modbus2mqtt/" + pr['name'] + '/package.json'
                         + "\nContinuing with invalid reference")
     if len(npmuninstallargs ) > 0:
         executeSyncCommand(["npm", "uninstall"] + npmuninstallargs)
     try:        
-        executeSyncCommand(npminstall + npminstallargs)
+        executeSyncCommand(["npm", "install"]  + npminstallargs)
         return len(npminstallargs ) > 0
     except Exception as err:
         eprint("npm cache exceptions can happen if the github url in dependencies is wrong!")
@@ -482,7 +484,7 @@ def tagExists(tagname:str)->bool:
 def ensureNewPkgJsonVersion():
     versionTag = "v" + readPackageJson('package.json')['version']        
     if tagExists(versionTag):
-        executeSyncCommand("npm", "--no-git-tag-version", "version", "patch")
+        executeSyncCommand(["npm", "--no-git-tag-version", "version", "patch"])
         return "v" + readPackageJson('package.json')['version']        
     return versionTag
 
@@ -492,12 +494,16 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
         # find unreleased commits
         changedInMain = 0
         executeSyncCommand( ['git','switch', 'main'] )
-        executeSyncCommand( ['git','pull'] )
+        executeSyncCommand( ['git','pull','--rebase'] )
         try:
             sha = executeSyncCommand( ['git','merge-base','--fork-point', 'release' ] ).decode("utf-8")
             sha = sha.replace('\n','')
             out:str = executeSyncCommand(['git','diff', '--name-status', sha ]).decode("utf-8")
             changedInMain = out.count('\n')
+            js = ghcompare( project.name,projectsList.owner,"main", projectsList.owner + ":" + project.branch)
+            cmpResult = json.loads(js)
+            changedInMain +=  int(cmpResult['behind_by'])
+
         except SyncException as err:
             if err.args[0] != '': # Wrong return code from git merge-base but no changes
                 raise err
@@ -510,11 +516,13 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
             if  getLocalChanges() > 0:
                 executeSyncCommand( ["git", "add", "."])
                 executeSyncCommand( ["git", "commit", "-m" , "Update npm version number " + versionTag] )
-                executeSyncCommand( ["git", "push"])
+                executeSyncCommand( ["git", "pull", "-X", "theirs"] )
+                executeSyncCommand( ["git", "push" , "-f", "origin", "HEAD"])
                 needsNewRelease = True
 
         executeSyncCommand( ['git','switch', 'release'] )
-        executeSyncCommand( ['git','merge', 'main'] )
+        executeSyncCommand( ["git", "pull", "-X", "theirs"] )
+        executeSyncCommand( ['git','merge', '-X','theirs', 'main'] )
         updatePackageJsonReferences(project, projectsList, dependencytype, prProject)    
         if  getLocalChanges() > 0:
             # makes sure, the version number in local pgkJson is new
@@ -524,12 +532,16 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
             executeSyncCommand(["git", "commit", "-m" , "Release " + versionTag] )
             needsNewRelease = True
         # May be the version number is up to date, but the tag doesn't exist
-        versionTag = "v" + readPackageJson('package.json')['version']                    
-        if needsNewRelease:
-            if  not tagExists(versionTag):
+        versionTag = "v" + readPackageJson('package.json')['version']
+        if  not tagExists(versionTag):
                 executeSyncCommand(["git", "tag", versionTag] )
-                executeSyncCommand(["git", "push", "--atomic", "origin" , "release", versionTag])
-            else:
+                if needsNewRelease:
+                    executeSyncCommand(["git", "push", "--atomic", "-f", "origin" , "release", versionTag])
+                else:
+                    executeSyncCommand(["git", "push", "origin", "tag", versionTag])
+                eprint( "Released " + project.name + ":" + versionTag)
+        else:
+            if needsNewRelease:
                 raise SyncException( "Release failed: Tag '" + versionTag + "' exists in " + project.name )
     else:
         updatePackageJsonReferences(project, projectsList, dependencytype, prProject)
@@ -538,13 +550,14 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
             raise SyncException("File(s) have been updated in " + project.name + ".\nThere are local changes.\nPlease commit them first")
         
 def prepareGitForReleaseProject(project:Project,  projectsList: Projects):
-    #if projectsList.login != projectsList.owner:
-    #   raise SyncException("Release is allowed for " + projectsList.owner + " only")
-    #js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
-    #match = re.search(r'' + projectsList.owner + '/', js)
-    #if not match:
-    #   raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name )
+    if projectsList.login != projectsList.owner:
+       raise SyncException("Release is allowed for " + projectsList.owner + " only")
+    js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
+    match = re.search(r'' + projectsList.owner + '/', js)
+    if not match:
+       raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name )
     executeSyncCommand(['git', 'switch', 'release']).decode("utf-8")
+    project.branch = "release"
     
 projectFunctions = {
     'compare' : compareProject,
@@ -562,16 +575,16 @@ projectFunctions = {
 
 
 def doWithProjects( projects:Projects, command:str, *args:Any ): 
-    eprint("step: " + command )
+    eprint("step: " + command, sep=' ', end='', flush=True )
     pwd = os.getcwd()
     for project in projects.projects:
         global currentProject 
         currentProject = project.name
-        eprint("step: " + currentProject )
-   
+        eprint(" " + currentProject, sep=' ', end='', flush=True )
         os.chdir(project.name)
         try:
             projectFunctions[command]( project, *args)
         finally:
             os.chdir(pwd)
+    eprint("")
 
