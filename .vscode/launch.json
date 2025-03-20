@@ -78,6 +78,15 @@
             "program": "${workspaceFolder}/bin/pulls.py",
              "args": [ "test"], 
             "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls createpull",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": [ "createpull"], 
+            "console": "integratedTerminal"
         }
     ]
 }

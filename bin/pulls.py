@@ -188,6 +188,8 @@ try:
                     if status != projects.TestStatus.success:
                         exit(2)
         case "createpull":
+            if projectsList.owner == projectsList.login:
+                raise projects.SyncException("Owner must be different from logged in user: " + projectsList.owner + " == " + projectsList.login )
             ii = None
             if args.issue != None:
                 i = args.issue.split(':')
