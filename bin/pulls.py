@@ -114,6 +114,8 @@ def initProjects(branch):
             projects.executeCommand(['git','clone', 'git@github.com:' + 
             owner + '/' +project.name + '.git' ])
     projects.doWithProjects(projectsList,'newbranch', branch)
+    projects.doWithProjects(projectsList,'npminstall')
+
 
 def dependencies( projectList, type:str, *args):
     mainproject = projectList['mainproject']
@@ -169,14 +171,22 @@ try:
             initProjects(args.branch)
         case "branch":
             projects.doWithProjects(projectsList,'newbranch', args.branch)
+            projects.doWithProjects(projectsList,'npminstall')
+
         case "sync":
             projects.doWithProjects(projectsList,'sync',projectsList)
         case "syncpull":
             pr  = projects.getPullrequestFromString(args.pullrequest)
             prs = projects.getRequiredPullrequests(projects.Project(pr['name']), projectsList.owner, pr['name'] + ":" + str(pr['number']))
             projects.doWithProjects(projectsList,'syncpull',projectsList, prs, args.branch)
+            projects.doWithProjects(projectsList,'npminstall')
         case "test":
-                    projects.doWithProjects(projectsList,'test')
+                    projects.sendTestStatus(projectsList, projects.TestStatus.running,False)
+                    projects.doWithProjects(projectsList,'test', projectsList)
+                    status = projects.getTestResultStatus(projectsList)
+                    projects.sendTestStatus(projectsList, status)
+                    if status != projects.TestStatus.success:
+                        exit(2)
         case "createpull":
             ii = None
             if args.issue != None:

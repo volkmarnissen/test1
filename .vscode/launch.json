@@ -60,7 +60,24 @@
              "args": ["-p", "projects.test.json", "dependencies", "pull", 
               "--pullrequest","test3:2" ], 
             "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls pullsync",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/../x",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "../modbus2mqtt.dev/projects.test.json", "syncpull", "test1:5" , "pull5"], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls test",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": [ "test"], 
+            "console": "integratedTerminal"
         }
-
     ]
 }

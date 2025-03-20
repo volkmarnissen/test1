@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from dataclasses import dataclass
+from enum import Enum
 import functools
 import io
 import json
@@ -21,6 +22,13 @@ class PullTexts:
     draft: bool = True
 
 currentProject = "unknown"    
+
+class TestStatus(Enum):
+    running = 1
+    failed = 2
+    success = 3
+    allfailed = 4
+    notstarted = 0
 
 @functools.total_ordering
 class Project:      
@@ -49,6 +57,7 @@ class Project:
     gitChanges: int
     pulltexts: list[PullTexts] = []
     pullrequestid: int = None
+    testStatus: TestStatus = TestStatus.notstarted
 
 type ProjectList = list[Project]
 
@@ -108,6 +117,7 @@ def executeSyncCommand(cmdArgs: list[str], *args, **kwargs)-> str:
     proc.returncode
     if proc.returncode != 0:
         raise SyncException( err.decode("utf-8"), ' '.join(cmdArgs), out.decode("utf-8"))
+    eprint(err.decode("utf-8"))
     return out
    
 def ghapi(method:str, url:str, *args)->str:
@@ -139,7 +149,12 @@ def forkProject( projectName, owner ):
    
     if '' != executeSyncCommand(['gh', 'repo' , 'fork',  owner + '/' + projectName]):
             time.sleep(3)
-
+def branchExists( branch):
+    try:
+        executeSyncCommand( ['git', 'branch', branch])
+        return False
+    except SyncException as err:
+        return True
 def readprojects(projectsFile)->Projects:
     try:
         input_file = open (projectsFile)
@@ -152,8 +167,53 @@ def readprojects(projectsFile)->Projects:
         print("something went wrong " , e)
 def getLocalChanges()->int:
     return int(subprocess.getoutput('git status --porcelain| wc -l')) 
-def testProject(project: Project, projects:Projects):
-    executeSyncCommand(["npm", "run", "test"])   
+
+def getTestResultStatus(projects:Projects):
+    failedCount = 0
+    for p in projects.projects:
+        if p.testStatus == TestStatus.failed:
+            failedCount +=1
+    if failedCount > 0:
+        if failedCount == len(projects.projects):
+            return TestStatus.allfailed
+        else:
+            return TestStatus.failed
+    else:
+        return TestStatus.success
+        
+
+def sendTestStatus( projects:Projects, status:TestStatus, update:bool=True):
+    try:
+        if projects.owner != projects.login:
+            eprint( "Only the owner of the repos is allowed to update pull requests. No updates sent, but tests will be executed")
+        statusStr = "No tests"
+        match( status):
+            case TestStatus.running: 
+                statusStr = '# Tests are running ...'
+            case TestStatus.success: 
+                statusStr = '# Tests successful'
+            case TestStatus.failed: 
+                statusStr = '# Some Tests failed'
+            case TestStatus.allfailed: 
+                statusStr = '# All Tests failed'
+
+        for p in projects.projects:
+            if p.pullrequestid != None:
+                if update:
+                    executeSyncCommand(['gh', projects.owner + '/' + p.name , 'pr', 'comment', '--edit-last', '-b', statusStr ])
+                else:
+                    executeSyncCommand(['gh', projects.owner + '/' + p.name, 'pr', 'comment', '-b', statusStr ])
+    except:
+        eprint("Unable to send status to Pull Requests")
+        #This will be ignored. The test results will also be 
+
+def testProject(project: Project, projects: Projects):
+    project.testStatus = TestStatus.running
+    try:
+        eprint( executeSyncCommand(["npm", "run", "test"]).decode("utf-8"))
+        project.testStatus = TestStatus.success
+    except SyncException as err:
+        project.testStatus = TestStatus.failed
 
 # syncs main from original github source to local git branch (E.g. 'feature')
 def syncProject(project: Project, projects:Projects):
@@ -205,16 +265,16 @@ def syncProject(project: Project, projects:Projects):
 # syncs main from original github source to local git branch (E.g. 'feature')
 def syncpullProject(project: Project, projects:Projects, prs:Dict[str,int], branch:str):
     executeSyncCommand(['git', 'remote', 'set-url', 'origin', 'git@github.com:' + projects.owner + '/'+ project.name + '.git' ])
-                
+    executeSyncCommand(['git','switch', 'main'])
     for pr in prs:
         found = False
         if not found and project.name == pr["name"]:
             found = True
-            executeSyncCommand(['git', 'fetch' 'origin', 'pull/' + str(pr['number'])+ '/head:' + branch ])
+            executeSyncCommand(['git', 'fetch', 'origin', 'pull/' + str(pr['number'])+ '/head:' + branch ])
             executeSyncCommand(['git','switch', branch])
     if not found:
         #sync to main branch
-        executeSyncCommand(['git', 'fetch' 'origin', 'main'])
+        executeSyncCommand(['git', 'fetch', 'origin', 'main'])
         executeSyncCommand(['git', 'checkout', 'main'])
 
 def pushProject(project:Project, projects:Projects):
@@ -373,14 +433,14 @@ def getRequiredPullrequests( project:Project, baseowner:str, pullrequest:str)->l
     rc:list[typing.Dict[str,int]] = []      
     if( text != None):
         match = re.search( requiredProjectsRe, text)
-        if len(match.groups()) == 1:
+        if None != match and len(match.groups()) == 1:
             prtexts = match.groups()[0].split(', ')
             for prtext in prtexts:
                 prx = prtext.split(':')
                 if len(prx) == 2:
                     rc.append({ "name":prx[0], "number":int(prx[1])})
         else:
-            rc.append({ "name":pr[0], "number":int(pr[1])})
+            rc.append(pr)
     return rc
 
 def updatepulltextProject(project:Project, projectsList: Projects, pullProjects:ProjectList, pullText:str):
@@ -558,10 +618,13 @@ def prepareGitForReleaseProject(project:Project,  projectsList: Projects):
        raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name )
     executeSyncCommand(['git', 'switch', 'release']).decode("utf-8")
     project.branch = "release"
+def npminstallProject(project:Project):
+    executeSyncCommand(['npm','install'])
     
 projectFunctions = {
     'compare' : compareProject,
     'sync' : syncProject,
+    'npminstall':npminstallProject,
     'syncpull': syncpullProject,
     'test': testProject,
     'push' : pushProject,
@@ -579,6 +642,7 @@ def doWithProjects( projects:Projects, command:str, *args:Any ):
     pwd = os.getcwd()
     for project in projects.projects:
         global currentProject 
+        eprint( project.name)
         currentProject = project.name
         eprint(" " + currentProject, sep=' ', end='', flush=True )
         os.chdir(project.name)
