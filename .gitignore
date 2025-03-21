@@ -142,3 +142,4 @@ angular/
 specification.shared/
 server.shared/
 hassio-addon-repository/
+bin/projects.py

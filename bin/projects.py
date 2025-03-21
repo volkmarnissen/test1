@@ -59,7 +59,6 @@ class Project:
     pullrequestid: int = None
     testStatus: TestStatus = TestStatus.notstarted
 
-type ProjectList = list[Project]
 
 class Projects: 
     def __init__(self, para:Dict):
@@ -67,7 +66,7 @@ class Projects:
         self.projects = para['projects']
     owner: str
     login:str
-    projects: ProjectList
+    projects: Any
     pulltext: PullTexts = None
 
 class SyncException(Exception):
@@ -314,7 +313,7 @@ def compareProject( project:Project, projects:Projects):
             
             
     
-def createpullProject( project: Project, projectsList:Projects, pullProjects:ProjectList, pullText:PullTexts, issuenumber:int):
+def createpullProject( project: Project, projectsList:Projects, pullProjects, pullText:PullTexts, issuenumber:int):
     if project.gitChanges == 0:
         return
     args = []
@@ -443,7 +442,7 @@ def getRequiredPullrequests( project:Project, baseowner:str, pullrequest:str)->l
             rc.append(pr)
     return rc
 
-def updatepulltextProject(project:Project, projectsList: Projects, pullProjects:ProjectList, pullText:str):
+def updatepulltextProject(project:Project, projectsList: Projects, pullProjects, pullText:str):
     requiredText = "required PRs: "
     for p in pullProjects:
         requiredText += p.name + ":" + str(p.pullrequestid) + ", "
