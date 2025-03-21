@@ -69,6 +69,7 @@ class Projects:
     pulltext: PullTexts = None
 
 def getGitPrefix( projects:Projects):
+    eprint( projects.login )
     if projects.owner == projects.login:
         return "https://"
     else:
