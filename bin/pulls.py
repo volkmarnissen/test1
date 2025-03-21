@@ -24,7 +24,7 @@ def getPullProjects(allProjects:projects.Projects):
         raise PullException("No changes in Github")
     return rc
 initialText = "Please update me"
-def buildPulltext(allProjects:projects.Projects, pullProjects:projects.ProjectList, issue:Issue)->projects.PullTexts:
+def buildPulltext(allProjects:projects.Projects, pullProjects, issue:Issue)->projects.PullTexts:
     if pullProjects == None or len(pullProjects)== 0:
         raise PullException("No projects to pull")
     pullText:projects.PullTexts = projects.PullTexts() # Default generic pull text update me!!
