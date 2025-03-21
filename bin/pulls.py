@@ -111,7 +111,7 @@ def initProjects(branch):
         if not projects.isProjectForked(project.name ):
             owner = projectsList.owner    
         if not os.path.exists( project.name ):
-            projects.executeCommand(['git','clone', 'git@github.com:' + 
+            projects.executeCommand(['git','clone', projects.getGitPrefix() +'github.com:' + 
             owner + '/' +project.name + '.git' ])
     projects.doWithProjects(projectsList,'newbranch', branch)
     projects.doWithProjects(projectsList,'npminstall')
