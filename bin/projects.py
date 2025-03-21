@@ -71,7 +71,7 @@ class Projects:
 def getGitPrefix( projects:Projects):
     eprint( projects.login )
     if projects.owner == projects.login:
-        return "https://"
+        return "https://github.com/"
     else:
         return "git@"
     
@@ -224,9 +224,9 @@ def testProject(project: Project, projects: Projects):
 def syncProject(project: Project, projects:Projects):
     project.isForked = isProjectForked(project.name)
     if project.isForked:
-        executeSyncCommand( ['git', 'remote', 'set-url', 'origin', getGitPrefix(projects) + 'github.com:' + projects.login + '/' + project.name + '.git' ]  )
+        executeSyncCommand( ['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.login + '/' + project.name + '.git' ]  )
     else:
-        executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects) + '@github.com:' + projects.owner + '/'+ project.name + '.git' ])
+        executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.owner + '/'+ project.name + '.git' ])
 
     project.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
     js = json.loads(ghapi('GET', '/user'))
@@ -269,7 +269,7 @@ def syncProject(project: Project, projects:Projects):
 
 # syncs main from original github source to local git branch (E.g. 'feature')
 def syncpullProject(project: Project, projects:Projects, prs:Dict[str,int], branch:str):
-    executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects) + 'github.com:' + projects.owner + '/'+ project.name + '.git' ])
+    executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.owner + '/'+ project.name + '.git' ])
     executeSyncCommand(['git','switch', 'main'])
     for pr in prs:
         found = False
@@ -293,7 +293,7 @@ def pushProject(project:Project, projects:Projects):
     js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
     match = re.search(r'' + projects.login + '/', js)
     if not match:
-        executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects) +'github.com:' + projects.login + '/'+ project.name + '.git' ])
+        executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.login + '/'+ project.name + '.git' ])
 
     # push local git branch to remote servers feature branch
     executeSyncCommand(['git','push', 'origin', project.branch]).decode("utf-8")
