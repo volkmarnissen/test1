@@ -79,7 +79,7 @@ def getGitPrefix( repositorys:Repositorys):
     if repositorys.owner == repositorys.login:
         return "https://github.com/"
     else:
-        return "git@"
+        return "git@github.com:"
     
 class SyncException(Exception):
     pass
@@ -118,18 +118,24 @@ class StreamThread ( Thread ):
             sys.stderr.flush()
             if line == '':
                 break
+
+def executeSyncCommandWithCwd(cmdArgs: list[str], cwdP:str, *args, **kwargs)-> str:
             
-def executeSyncCommand(cmdArgs: list[str], cwd=os.getcwd() , *args, **kwargs)-> str:
+    if cwdP == None:
+        cwdP = os.getcwd()
     proc = subprocess.Popen(cmdArgs,
-	cwd=cwd,
- 	stdout=subprocess.PIPE,
+    cwd=cwdP,
+    stdout=subprocess.PIPE,
  	stderr=subprocess.PIPE) 
     out, err = proc.communicate()
     proc.returncode
     if proc.returncode != 0:
-        raise SyncException( err.decode("utf-8"), ' '.join(cmdArgs), out.decode("utf-8"))
+        raise SyncException( cwdP +':'+ err.decode("utf-8"), ' '.join(cmdArgs), out.decode("utf-8"))
     eprint(err.decode("utf-8"))
     return out
+
+def executeSyncCommand(cmdArgs: list[str], *args, **kwargs)-> str:
+    return executeSyncCommandWithCwd(cmdArgs, os.getcwd(), *args, **kwargs)
    
 def ghapi(method:str, url:str, *args)->str:
 
@@ -193,10 +199,21 @@ def getTestResultStatus(repositorys:Repositorys):
         return TestStatus.success
         
 def setUrl(repository:Repository, repositorys:Repositorys):
-    origin = repositorys.owner
+    origins = [repositorys.owner]
     if isRepositoryForked( repository.name):
-        origin = repositorys.login
-    executeSyncCommand( ['git', 'remote', 'set-url', origin, getGitPrefix(repositorys)  + repositorys.login + '/' + repository.name + '.git' ]  )
+        origins.append(repositorys.login)
+    for origin in origins:
+        cmd = ['git', 'remote', 'set-url', origin, getGitPrefix(repositorys)  + repositorys.login + '/' + repository.name + '.git' ]
+        try:
+            executeSyncCommand( cmd  )
+        except SyncException as err:
+            cmd[2]= 'add'
+            executeSyncCommand( cmd  )
+            try:
+                executeSyncCommand([ 'git','branch','--set-upstream-to='+ origin + '/' + repository.branch] )
+            except SyncException as err:
+                if not "the requested upstream branch" in err.args[0]:
+                    raise err
    
 def sendTestStatus( repositorys:Repositorys, status:TestStatus, update:bool=True):
     try:
@@ -269,8 +286,9 @@ def testRepository(repository:Repository, repositories:Repositorys, mainTestPull
 # syncs main from original github source to local git branch (E.g. 'feature')
 def syncRepository(repository: Repository, repositorys:Repositorys):
     repository.isForked = isRepositoryForked(repository.name)
-    setUrl(repository)
     repository.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
+    setUrl(repository,repositorys)
+    
     js = json.loads(ghapi('GET', '/user'))
     out = executeCommand(['git','remote','show','origin'])
     match = re.search(r'.*Push *URL:[^:]*:([^\/]*)', out.decode("utf-8"))
@@ -287,21 +305,26 @@ def syncRepository(repository: Repository, repositorys:Repositorys):
         try:
             ghapi('GET', '/repos/' + repositorys.login + '/' + repository.name + '/branches/' + repository.branch)
             executeSyncCommand(['git','switch', repository.branch]).decode("utf-8")
-            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + repository.branch, repository.branch ])
+            executeSyncCommand(['git','branch','--set-upstream-to='+ repositorys.login +'/' + repository.branch, repository.branch ])
             executeSyncCommand(['git','pull','--rebase']).decode("utf-8")
         except SyncException as err:
+            
             if  err.args[0] != "":
-                js = json.loads(err.args[2])
-                if not js['message'].startswith("Branch not found"):
-                    raise err
+                if  "fatal: the requested upstream branch" in  err.args[0]:
+                    executeSyncCommand(['git','fetch', 'modbus2mqtt']).decode("utf-8")
+                    executeSyncCommand(['git','branch','--set-upstream-to='+ repositorys.owner +'/main' ])
                 else:
-                    executeSyncCommand(['git','branch','--set-upstream-to=origin/main', repository.branch ])
-
-    executeSyncCommand(['git','switch', repository.branch]).decode("utf-8")
+                    js = json.loads(err.args[2])
+                    if not js['message'].startswith("Branch not found"):
+                        raise err
+                    else:
+                        executeSyncCommand(['git','branch','--set-upstream-to='+ repositorys.login +'/main', repository.branch ])
+    else:
+        executeSyncCommand(['git','switch', repository.branch]).decode("utf-8")
+        executeSyncCommand(['git','pull', '--rebase']).decode("utf-8")
+   
     repository.localChanges = getLocalChanges()
-    executeSyncCommand(['git','pull', '--rebase']).decode("utf-8")
-     
-    executeSyncCommand( ['git','merge', 'main'] ).decode("utf-8")
+    executeSyncCommand( ['git','merge',  repositorys.owner +'/main'] ).decode("utf-8")
     out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
     repository.gitChanges = out.count('\n')
 
@@ -676,6 +699,7 @@ def doWithRepositorys( repositorys:Repositorys, command:str, *args:Any ):
         currentRepository = repository.name
         eprint(" " + currentRepository, sep=' ', end='', flush=True )
         os.chdir(repository.name)
+        eprint(os.getcwd())
         try:
             repositoryFunctions[command]( repository, *args)
         finally:

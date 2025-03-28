@@ -110,12 +110,12 @@ def initRepositorys(branch):
     for repository in repositorysList.repositorys:   
         # fork will fail if repository it is already forked.The error will be ignored
         owner = repositorysList.login
-        if not repositories.isRepositoryForked(repositories.name ):
+        if not repositories.isRepositoryForked(repository.name ):
             owner = repositorysList.owner    
-        if not os.path.exists( repositories.name ):
+        if not os.path.exists( repository.name ):
             repositories.executeCommand(['git','clone', repositories.getGitPrefix(repositorysList)  + 
-            owner + '/' + repositories.name + '.git' , '--origin', owner ])
-            repositories.setUrl(repository)
+            owner + '/' + repository.name + '.git' , '--origin', owner ])
+            repositories.setUrl(repository,repositorysList)
     repositories.doWithRepositorys(repositorysList,'newbranch', branch)
     repositories.doWithRepositorys(repositorysList,'npminstall')
 

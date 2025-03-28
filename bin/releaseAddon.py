@@ -24,16 +24,16 @@ class StringReplacement(NamedTuple):
     newValue:str
 
 def getLatestClosedPullRequest(basedir, component ):
-    return json.loads(repositories.executeSyncCommand(['gh', 'pr', 'list', 
-	    '-s' , 'closed' , '-L', '1', '--json', 'number'], cwd=os.path.join(basedir, component)))[0]['number']
+    return json.loads(repositories.executeSyncCommandWithCwd(['gh', 'pr', 'list', 
+	    '-s' , 'closed' , '-L', '1', '--json', 'number'], os.path.join(basedir, component)))[0]['number']
 
 
 def removeTag(basedir, component, tagname ):
     try:
-        repositories.executeSyncCommand(['git', 'push', '--delete', 
-	    'origin' , tagname], cwd=os.path.join(basedir, component))
+        repositories.executeSyncCommandWithCwd(['git', 'push', '--delete', 
+	    'origin' , tagname], os.path.join(basedir, component))
         repositories.eprint("tagname: !" + tagname + "!")
-        repositories.executeSyncCommand(['git', 'tag', '-d', tagname], cwd=os.path.join(basedir, component))
+        repositories.executeSyncCommandWithCwd(['git', 'tag', '-d', tagname], os.path.join(basedir, component))
     except repositories.SyncException as err:
         repositories.eprint( err.args)
 
