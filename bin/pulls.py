@@ -166,7 +166,6 @@ parser_sync.set_defaults(command='sync')
 
 parser_test = subparsers.add_parser("test", help="test: execute npm test for all repositorys")
 parser_test.set_defaults(command='test')
-
 parser_testorwait = subparsers.add_parser("testorwait", help="Executed via github event pull_request")
 parser_testorwait.set_defaults(command='testorwait')
 parser_testorwait.add_argument("pullrequest", help="Pull request <repository name>:<number> ", type = str)
