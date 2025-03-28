@@ -1,7 +1,7 @@
 {
   "owner": "modbus2mqtt",
   "mainproject":"server",
-  "projects": [
+  "repositories": [
     {
       "name" : "specification.shared"
     },

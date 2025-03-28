@@ -12,6 +12,7 @@ import re
 import time
 from typing import Any, Dict
 import typing
+import time
 from threading import Thread
 
 @dataclass
@@ -21,7 +22,7 @@ class PullTexts:
     text: str = ""
     draft: bool = True
 
-currentProject = "unknown"    
+currentRepository = "unknown"    
 
 class TestStatus(Enum):
     running = 1
@@ -30,8 +31,13 @@ class TestStatus(Enum):
     allfailed = 4
     notstarted = 0
 
+@dataclass
+class PullRequest:
+    name: str
+    number: int
+
 @functools.total_ordering
-class Project:      
+class Repository:      
     def __init__(self, name:str):
         self.name = name
         self.pulltexts =[]
@@ -59,18 +65,18 @@ class Project:
     pullrequestid: int = None
     testStatus: TestStatus = TestStatus.notstarted
 
-class Projects: 
+class Repositorys: 
     def __init__(self, para:Dict):
         self.owner = para['owner']
-        self.projects = para['projects']
+        self.repositorys = para['repositories']
     owner: str
     login:str
-    projects: Any
+    repositorys: Any
     pulltext: PullTexts = None
 
-def getGitPrefix( projects:Projects):
-    eprint( projects.login )
-    if projects.owner == projects.login:
+def getGitPrefix( repositorys:Repositorys):
+    eprint( repositorys.login )
+    if repositorys.owner == repositorys.login:
         return "https://github.com/"
     else:
         return "git@"
@@ -138,21 +144,21 @@ def ghcompare( repo:str, owner:str, base:str, head:str, *args, **kwargs)->str:
         delimiter = '..'
     url = '/repos/' + owner + '/' + repo + '/compare/' + base  + delimiter + head
     return ghapi( 'GET', url )
-def json2Projects(dct:Any ):
+def json2Repositorys(dct:Any ):
     if 'name' in dct:
-        p =   Project( dct['name'])
+        p =   Repository( dct['name'])
         return p
     return dct
 
-def isProjectForked( projectName )->bool:
+def isRepositoryForked( repositoryName )->bool:
     forked = json.loads(executeCommand(['gh', 'repo' , 'list', '--fork', '--json', 'name'] ))
-    for project in forked:
-        if project['name'] == projectName :
+    for repository in forked:
+        if repository['name'] == repositoryName :
             return True
     return False
-def forkProject( projectName, owner ):
+def forkRepository( repositoryName, owner ):
    
-    if '' != executeSyncCommand(['gh', 'repo' , 'fork',  owner + '/' + projectName]):
+    if '' != executeSyncCommand(['gh', 'repo' , 'fork',  owner + '/' + repositoryName]):
             time.sleep(3)
 def branchExists( branch):
     try:
@@ -160,12 +166,12 @@ def branchExists( branch):
         return False
     except SyncException as err:
         return True
-def readprojects(projectsFile)->Projects:
+def readrepositorys(repositorysFile)->Repositorys:
     try:
-        input_file = open (projectsFile)
-        jsonDict:Dict[str,Any] =  json.load(input_file, object_hook=json2Projects)
+        input_file = open (repositorysFile)
+        jsonDict:Dict[str,Any] =  json.load(input_file, object_hook=json2Repositorys)
         js = json.loads(ghapi('GET', '/user'))
-        p =  Projects(jsonDict)
+        p =  Repositorys(jsonDict)
         p.login = js['login']
         return p
     except Exception as e:
@@ -173,23 +179,28 @@ def readprojects(projectsFile)->Projects:
 def getLocalChanges()->int:
     return int(subprocess.getoutput('git status --porcelain| wc -l')) 
 
-def getTestResultStatus(projects:Projects):
+def getTestResultStatus(repositorys:Repositorys):
     failedCount = 0
-    for p in projects.projects:
+    for p in repositorys.repositorys:
         if p.testStatus == TestStatus.failed:
             failedCount +=1
     if failedCount > 0:
-        if failedCount == len(projects.projects):
+        if failedCount == len(repositorys.repositorys):
             return TestStatus.allfailed
         else:
             return TestStatus.failed
     else:
         return TestStatus.success
         
-
-def sendTestStatus( projects:Projects, status:TestStatus, update:bool=True):
+def setUrl(repository:Repository, repositorys:Repositorys):
+    origin = repositorys.owner
+    if isRepositoryForked( repository.name):
+        origin = repositorys.login
+    executeSyncCommand( ['git', 'remote', 'set-url', origin, getGitPrefix(repositorys)  + repositorys.login + '/' + repository.name + '.git' ]  )
+   
+def sendTestStatus( repositorys:Repositorys, status:TestStatus, update:bool=True):
     try:
-        if projects.owner != projects.login:
+        if repositorys.owner != repositorys.login:
             eprint( "Only the owner of the repos is allowed to update pull requests. No updates sent, but tests will be executed")
         statusStr = "No tests"
         match( status):
@@ -202,49 +213,81 @@ def sendTestStatus( projects:Projects, status:TestStatus, update:bool=True):
             case TestStatus.allfailed: 
                 statusStr = '# All Tests failed'
 
-        for p in projects.projects:
+        for p in repositorys.repositorys:
             if p.pullrequestid != None:
                 if update:
-                    executeSyncCommand(['gh', projects.owner + '/' + p.name , 'pr', 'comment', '--edit-last', '-b', statusStr ])
+                    executeSyncCommand(['gh', repositorys.owner + '/' + p.name , 'pr', 'comment', '--edit-last', '-b', statusStr ])
                 else:
-                    executeSyncCommand(['gh', projects.owner + '/' + p.name, 'pr', 'comment', '-b', statusStr ])
+                    executeSyncCommand(['gh', repositorys.owner + '/' + p.name, 'pr', 'comment', '-b', statusStr ])
     except:
         eprint("Unable to send status to Pull Requests")
         #This will be ignored. The test results will also be 
 
-def testProject(project: Project, projects: Projects):
-    project.testStatus = TestStatus.running
-    try:
-        eprint( executeSyncCommand(["npm", "run", "test"]).decode("utf-8"))
-        project.testStatus = TestStatus.success
-    except SyncException as err:
-        project.testStatus = TestStatus.failed
+@dataclass
+class Checkrun:
+    completed: bool
+    success: bool
+
+def getLastCheckRun(repositories:Repositorys,repository:Repository, branch:str)->Checkrun:
+    js = json.loads(ghapi('GET', '/repos/' + repositories.owner +'/' + repository.name + '/commits/' + branch + '/check-runs?filter=latest').decode('utf-8'))
+    if js['total_count'] != 1:
+        raise SyncException( "Invalid number of check runs for " + '/'.join([repositories.owner , repository.name, branch]) + ': ' + js['total_count'])
+    checkrunjs = js["checkruns"][0]
+    return Checkrun(checkrunjs['status'] ==  "completed", checkrunjs["conclusion"] == "success")
+              
+def waitForMainTestPullRequest(repositories:Repositorys, mainTestPullRequest:PullRequest):
+    eprint( "waiting for " + mainTestPullRequest.name + ":" + mainTestPullRequest.number)
+    for mr in repositories.repositorys:
+        if mr.name == mainTestPullRequest.name:
+            while  True:
+                js = getPullrequestId(mr,repositories,['state','headRefName'])
+                match ( js['state'] ):
+                    case 'OPEN'| 'APPROVED':  
+                        eprint( "state " + js['state'])
+                        checkrun = getLastCheckRun(repositories, mr, js['headRefName'] )
+                        if checkrun.completed:
+                            if checkrun.success:
+                                eprint( mainTestPullRequest.name + ":" + mainTestPullRequest.number + " finished with success")
+                                exit(0)
+                            else:
+                                eprint( mainTestPullRequest.name + ":" + mainTestPullRequest.number + " finished with failure")
+                                exit(2)
+                    case _:
+                        # try again later
+                        time.sleep(30)
+    # check run not found or other issues. It should stop with exit() when checkrun is finished
+    SyncException( "Unable validate check run for pull Request " + mainTestPullRequest.name + ":" +  mainTestPullRequest.number )
+
+def testRepository(repository:Repository, repositories:Repositorys, mainTestPullRequest:PullRequest):
+        if repository.name == mainTestPullRequest.name:
+            eprint( executeSyncCommand(["npm", "run", "test"]).decode("utf-8"))
+        else:
+            for mr in repositories.repositorys:
+                if mr.name == mainTestPullRequest.name:
+                    waitForMainTestPullRequest(mr, repositories,mainTestPullRequest)
 
 # syncs main from original github source to local git branch (E.g. 'feature')
-def syncProject(project: Project, projects:Projects):
-    project.isForked = isProjectForked(project.name)
-    if project.isForked:
-        executeSyncCommand( ['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.login + '/' + project.name + '.git' ]  )
-    else:
-        executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.owner + '/'+ project.name + '.git' ])
-
-    project.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
+def syncRepository(repository: Repository, repositorys:Repositorys):
+    repository.isForked = isRepositoryForked(repository.name)
+    setUrl(repository)
+    repository.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
     js = json.loads(ghapi('GET', '/user'))
     out = executeCommand(['git','remote','show','origin'])
     match = re.search(r'.*Push *URL:[^:]*:([^\/]*)', out.decode("utf-8"))
     match = re.search(r'.*Remote[^:]*:[\r\n]+ *([^ ]*)', out.decode("utf-8"))
-    project.remoteBranch = match.group(1)
+    repository.remoteBranch = match.group(1)
     # Sync owners github repository main branch from modbus2mqtt main branch
     # Only the main branch needs to be synced from github
     executeSyncCommand(['git','switch', 'main' ]).decode("utf-8")
     # ghapi('GET', ownerrepo+ '/merge-upstream', '-f', 'branch=main'
-    if project.isForked:
-        executeSyncCommand( ['gh','repo','sync', projects.login + '/' + project.name ,  '-b' , 'main' ]  ).decode("utf-8")
+    # Is is not neccessary to update the main branch in forked repository, because the main branch's origin points to owner
+    if repository.isForked:
+        executeSyncCommand( ['gh','repo','sync', repositorys.login + '/' + repository.name ,  '-b' , 'main' ]  ).decode("utf-8")
         # download all branches from owners github to local git main branch
         try:
-            ghapi('GET', '/repos/' + projects.login + '/' + project.name + '/branches/' + project.branch)
-            executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
-            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.branch, project.branch ])
+            ghapi('GET', '/repos/' + repositorys.login + '/' + repository.name + '/branches/' + repository.branch)
+            executeSyncCommand(['git','switch', repository.branch]).decode("utf-8")
+            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + repository.branch, repository.branch ])
             executeSyncCommand(['git','pull','--rebase']).decode("utf-8")
         except SyncException as err:
             if  err.args[0] != "":
@@ -252,75 +295,55 @@ def syncProject(project: Project, projects:Projects):
                 if not js['message'].startswith("Branch not found"):
                     raise err
                 else:
-                    executeSyncCommand(['git','branch','--set-upstream-to=origin/main', project.branch ])
-    else:
-        if projects.owner == projects.login:
-            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.branch, project.branch ])
-        else:
-            executeSyncCommand(['git','branch','--set-upstream-to=origin/' + project.remoteBranch, project.branch ])
+                    executeSyncCommand(['git','branch','--set-upstream-to=origin/main', repository.branch ])
 
-    executeSyncCommand(['git','switch', project.branch]).decode("utf-8")
-    project.localChanges = getLocalChanges()
+    executeSyncCommand(['git','switch', repository.branch]).decode("utf-8")
+    repository.localChanges = getLocalChanges()
     executeSyncCommand(['git','pull', '--rebase']).decode("utf-8")
      
     executeSyncCommand( ['git','merge', 'main'] ).decode("utf-8")
     out = executeSyncCommand(['git','diff', '--name-only','main' ]).decode("utf-8")
-    project.gitChanges = out.count('\n')
+    repository.gitChanges = out.count('\n')
 
 # syncs main from original github source to local git branch (E.g. 'feature')
-def syncpullProject(project: Project, projects:Projects, prs:Dict[str,int], branch:str):
-    executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.owner + '/'+ project.name + '.git' ])
+def syncpullRepository(repository: Repository, repositorys:Repositorys, prs:Dict[str,int], branch:str):
     executeSyncCommand(['git','switch', 'main'])
     for pr in prs:
         found = False
-        if not found and project.name == pr["name"]:
+        if not found and repository.name == pr["name"]:
             found = True
-            executeSyncCommand(['git', 'fetch', 'origin', 'pull/' + str(pr['number'])+ '/head:' + branch ])
+            executeSyncCommand(['git', 'fetch', repositorys.owner, 'pull/' + str(pr['number'])+ '/head:' + branch ])
             executeSyncCommand(['git','switch', branch])
     if not found:
         #sync to main branch
-        executeSyncCommand(['git', 'fetch', 'origin', 'main'])
+        executeSyncCommand(['git', 'fetch', repositorys.owner, 'main'])
         executeSyncCommand(['git', 'checkout', 'main'])
 
-def pushProject(project:Project, projects:Projects):
-    # Check if login/project repository exists in github
-    if project.gitChanges == 0:
+def pushRepository(repository:Repository, repositorys:Repositorys):
+    # Check if login/repository repository exists in github
+    if repository.gitChanges == 0:
         return
     
-    if not isProjectForked( project.name):
-        forkProject(project.name, projects.owner)
-
-    js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
-    match = re.search(r'' + projects.login + '/', js)
-    if not match:
-        executeSyncCommand(['git', 'remote', 'set-url', 'origin', getGitPrefix(projects)  + projects.login + '/'+ project.name + '.git' ])
-
+    if not isRepositoryForked( repository.name):
+        forkRepository(repository.name, repositorys.owner)
+        executeSyncCommand(['git', 'remote', 'set-url', repositorys.login, getGitPrefix(repositorys)  + repositorys.login + '/'+ repository.name + '.git' ])
+    executeSyncCommand(['git','switch', repository.branch])
     # push local git branch to remote servers feature branch
-    executeSyncCommand(['git','push', 'origin', project.branch]).decode("utf-8")
+    executeSyncCommand(['git','push', repositorys.owner, repository.branch]).decode("utf-8")
 
-def compareProject( project:Project, projects:Projects):
+def compareRepository( repository:Repository, repositorys:Repositorys):
     # compares git current content with remote branch 
-    project.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
+    repository.branch =  subprocess.getoutput('git rev-parse --abbrev-ref HEAD')
     showOrigin = executeCommand( [ 'git', '-v', 'show', 'origin' ])
-    project.hasChanges = False
-    project.localChanges = int(subprocess.getoutput('git status --porcelain| wc -l'))
-    if project.isForked:
-        # does the remote branch exist?
-        out = executeSyncCommand(['git','ls-remote','--heads','origin','refs/heads/' + project.branch ]).decode ("utf-8")
-        if  out !='':
-            # The remote branch exists
-            js = ghcompare( project.name,projects.owner,"main", projects.login + ":" + project.branch)
-            cmpResult = json.loads(js)
-            project.hasChanges =  cmpResult['status'] == 'ahead'        
-        else:
-            # No remote branch compare main and feature branch with git
-            out = executeSyncCommand(['git','diff', 'main']).decode("utf-8")
-            project.hasChanges = out.count('\n') > 0
-            
-            
-    
-def createpullProject( project: Project, projectsList:Projects, pullProjects, pullText:PullTexts, issuenumber:int):
-    if project.gitChanges == 0:
+    repository.hasChanges = False
+    repository.localChanges = int(subprocess.getoutput('git status --porcelain| wc -l'))
+
+    # No remote branch compare main and feature branch with git
+    out = executeSyncCommand(['git','diff', 'main']).decode("utf-8")
+    repository.hasChanges = out.count('\n') > 0
+
+def createpullRepository( repository: Repository, repositorysList:Repositorys, pullRepositorys, pullText:PullTexts, issuenumber:int):
+    if repository.gitChanges == 0:
         return
     args = []
     if pullText != None:
@@ -333,33 +356,33 @@ def createpullProject( project: Project, projectsList:Projects, pullProjects, pu
     else:
         args.append("-f"); args.append( "issue=" + str( issuenumber))
         args.append("-f"); args.append( 'draft=false')
-    args.append("-f"); args.append( "head=" + projectsList.login + ":" + project.branch)
-    #args.append("-f"); args.append( "head=" + project.branch)
+    args.append("-f"); args.append( "head=" + repositorysList.login + ":" + repository.branch)
+    #args.append("-f"); args.append( "head=" + repository.branch)
     args.append("-f"); args.append( "base=main")  
     try:      
-        js = json.loads(ghapi('POST','/repos/'+ projectsList.owner +'/' + project.name + '/pulls',args))
+        js = json.loads(ghapi('POST','/repos/'+ repositorysList.owner +'/' + repository.name + '/pulls',args))
         # Append "requires:" text
-        project.pullrequestid = js['number']
+        repository.pullrequestid = js['number']
     except SyncException as err:
         if len(args) and err.args[0] != "":
             js = json.loads(err.args[1])
             if js['errors'][0]['message'].startswith("A pull request already exists for"):
                 eprint( js['errors'][0]['message']  + ". Continue...")
-                project.pullrequestid = getPullrequestId(project,projectsList)
+                repository.pullrequestid = getPullrequestId(repository,repositorysList)
                 return
 
 
    
-def newBranch(project:Project, branch:str):
+def newBranch(repository:Repository, branch:str):
     try:
         executeSyncCommand(['git','show-ref','--quiet','refs/heads/' + branch])
     except:
-        executeSyncCommand(['git','checkout','-b', branch])
+        executeSyncCommand(['git','checkout','-b', branch ])
     executeSyncCommand(['git','switch', branch])
     executeSyncCommand(['git','fetch'])
     
-def getPullRequests(project:Project, projects:Projects):
-    pullrequest = getRequiredPullrequests(project, projects)
+def getPullRequests(repository:Repository, repositorys:Repositorys):
+    pullrequest = getRequiredPullrequests(repository, repositorys)
 
 def checkFileExistanceInGithubBranch(owner, repo, branch, file):
     result = json.loads(ghapi('GET','/repos/'+ owner +'/' + repo + '/git/trees/'+ branch +'?recursive=true'))
@@ -376,9 +399,9 @@ def checkFileExistanceInGithubPullRequest(owner, repo, pullnumber, file):
             return True
     return False
 
-def readpulltextProject(project:Project):
-    out = executeSyncCommand(['git','log','main...' + project.branch , '--pretty=BEGIN%s%n%b%nEND']).decode("utf-8")
-    project.pulltexts = []
+def readpulltextRepository(repository:Repository):
+    out = executeSyncCommand(['git','log','main...' + repository.branch , '--pretty=BEGIN%s%n%b%nEND']).decode("utf-8")
+    repository.pulltexts = []
     while True:
         posBegin = out.find("BEGIN")
         posEnd = out.find("\nEND")
@@ -390,14 +413,14 @@ def readpulltextProject(project:Project):
                 pt = PullTexts(match.groups()[0],  match.groups()[1])
                 if 3 == len(match.groups()):
                     pt.text = match.groups()[2]
-                project.pulltexts.append(pt)
+                repository.pulltexts.append(pt)
             
         if re.search(r'\s*$', out):
             break;
 
-def getPullrequestId(project:Project, projects:Projects, additionalFields:list[str] = None):
+def getPullrequestId(repository:Repository, repositorys:Repositorys, additionalFields:list[str] = None):
     cmd = [ "gh", "pr", "list" , 
-        "-R", projects.owner + "/" + project.name,
+        "-R", repositorys.owner + "/" + repository.name,
         "--json", "number" ,
         "--json", "headRefName",
         "--json", "author"  ]
@@ -408,63 +431,65 @@ def getPullrequestId(project:Project, projects:Projects, additionalFields:list[s
     js = json.loads(executeSyncCommand(cmd))
     if len(js) > 0:
         for entry in js:
-            if entry['author']['login'] == projects.login and entry['headRefName'] == project.branch: 
+            if entry['author']['login'] == repositorys.login and entry['headRefName'] == repository.branch: 
                 if additionalFields == None:
                     return js[0]["number"]
                 else:
                     return js[0]
     return None
-def getpulltext( project:Project, baseowner:str, pullrequestid:int = None)->str:
+def getpulltext( repository:Repository, baseowner:str, pullrequestid:int = None)->str:
     if pullrequestid == None:
-        pullrequestid = project.pullrequestid
+        pullrequestid = repository.pullrequestid
     if pullrequestid != None and pullrequestid >0:
         js = json.loads(executeSyncCommand([ "gh", "pr", "view" , str( pullrequestid), 
-            "-R", baseowner + "/" + project.name,
+            "-R", baseowner + "/" + repository.name,
             "--json", "body"  ]))
         return  js['body']
     return None
 
-requiredProjectsRe = r"\s*required PRs: (.*)\s*"
+requiredRepositorysRe = r"\s*required PRs: (.*)\s*"
 
-def getPullrequestFromString(prname:str )->typing.Dict[str,int]:
+def getPullrequestFromString(prname:str )->PullRequest:
     pr = prname.split(':')
     if len(pr) != 2:
-        raise SyncException("Invalid format for pull request (expected: <project>:<pull request number>)")
-    return { "name":pr[0], "number":int(pr[1])}
+        raise SyncException("Invalid format for pull request (expected: <repository>:<pull request number>)")
+    return PullRequest(pr[0],int(pr[1]))
 
-def getRequiredPullrequests( project:Project, baseowner:str, pullrequest:str)->list[typing.Dict[str,int]]:
-    pr = getPullrequestFromString(pullrequest)
-    text = getpulltext( project, baseowner, pr["number"] )
-    rc:list[typing.Dict[str,int]] = []      
-    if( text != None):
-        match = re.search( requiredProjectsRe, text)
+def getRequiredReposFromPRDescription(prDescription:str,pullrequest:PullRequest)->list[PullRequest]:
+    rc:list[PullRequest] = []      
+    if( prDescription != None):
+        match = re.search( requiredRepositorysRe, prDescription)
         if None != match and len(match.groups()) == 1:
             prtexts = match.groups()[0].split(', ')
             for prtext in prtexts:
                 prx = prtext.split(':')
                 if len(prx) == 2:
-                    rc.append({ "name":prx[0], "number":int(prx[1])})
+                    rc.append(PullRequest(prx[0],int(prx[1])))
         else:
-            rc.append(pr)
+            rc.append(pullrequest)
     return rc
 
-def updatepulltextProject(project:Project, projectsList: Projects, pullProjects, pullText:str):
+def getRequiredPullrequests( repository:Repository, pullrequest:PullRequest )->list[PullRequest]:
+    text = getpulltext( repository, pullrequest )
+    return getRequiredReposFromPRDescription(text,pullrequest)
+
+def updatepulltextRepository(repository:Repository, repositorysList: Repositorys, pullRepositorys):
     requiredText = "required PRs: "
-    for p in pullProjects:
+    for p in pullRepositorys:
         requiredText += p.name + ":" + str(p.pullrequestid) + ", "
     if requiredText.endswith(", "):
         requiredText = requiredText[:-2]
-    pulltext = getpulltext(project, projectsList.owner)
+    pulltext = getpulltext(repository, repositorysList.owner)
     if pulltext != None:
         pulltext = re.sub(
-           requiredProjectsRe, 
+           requiredRepositorysRe, 
            "", 
            pulltext)
-        eprint( pulltext)
-        args = [ "gh", "pr", "edit", str( project.pullrequestid), 
-            "-R", projectsList.owner + "/" + project.name,
+    eprint( pulltext)
+    args = [ "gh", "pr", "edit", str( repository.pullrequestid), 
+            "-R", repositorysList.owner + "/" + repository.name,
             "--body", pulltext + "\n" + requiredText ]
-        executeSyncCommand(args)
+    executeSyncCommand(args)
 def readPackageJson( dir:str)->Dict[str,any]:
     try:
         with open(dir) as json_data:
@@ -473,15 +498,15 @@ def readPackageJson( dir:str)->Dict[str,any]:
         eprint("Exception read " )
         msg = str(err.args)
         raise SyncException("Try to open package.json in " + os.getcwd() + '\n' +  msg)
-def updatePackageJsonReferences(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project):
-    prs: list[Dict[str, int]] = []
+def updatePackageJsonReferences(repository:Repository,  repositorysList: Repositorys,dependencytype: str, prRepository:Repository):
+    prs:list[PullRequest] = []
     if dependencytype == 'pull':
-        prs = getRequiredPullrequests(prProject, projectsList.owner, prProject.name + ":" + str(prProject.pullrequestid))
-        if prProject == None:
+        prs = getRequiredPullrequests(prRepository, repositorysList.owner, PullRequest(prRepository.name ,prRepository.pullrequestid))
+        if prRepository == None:
             SyncException("pull requires pull request parameter -r")
-    else: # do it for all projects
-        for pr in projectsList.projects:
-            prs.append({"name":pr.name, "number":pr.pullrequestid})           
+        else: # do it for all repositorys
+            for pr in repositorysList.repositorys:
+                prs.append(PullRequest(pr.name, pr.pullrequestid))         
     npminstallargs = []
     npmuninstallargs = []
     pkgjson = readPackageJson('package.json')
@@ -489,12 +514,12 @@ def updatePackageJsonReferences(project:Project,  projectsList: Projects,depende
     for pr in prs:
          # restrict to open PR's
             
-        package = '@' + projectsList.owner+ '/' +  pr['name']
+        package = '@' + repositorysList.owner+ '/' +  pr['name']
         
         if 'dependencies' in pkgjson and package in pkgjson['dependencies'].keys():
-            pProject = Project(pr['name'])
-            pProject.branch = project.branch
-            js = getPullrequestId( pProject,projectsList,["state"])
+            pRepository = Repository(pr['name'])
+            pRepository.branch = repository.branch
+            js = getPullrequestId( pRepository,repositorysList,["state"])
             # If PR is no more open, use main branch instead of PR
             if ( js == None and dependencytype == 'local') or( dependencytype == 'pull' and js['state'] not in ['OPEN', 'APPROVED']):
                 dependencytype ='remote'
@@ -506,22 +531,22 @@ def updatePackageJsonReferences(project:Project,  projectsList: Projects,depende
                 case "remote":
                     # for testing: Use login instead of owner
                     # In production owner == login
-                    githubName = 'github:'+ projectsList.owner +'/' + pr['name']
+                    githubName = 'github:'+ repositorysList.owner +'/' + pr['name']
                     if checkFileExistanceInGithubBranch('modbus2mqtt', pr['name'],'main', 'package.json'):
                         npminstallargs.append(  githubName)
                         npmuninstallargs.append( package )
                     else:
                         eprint("package.json is missing in modbus2mqtt/" + pr['name'] +"#main"
-                        + ".\nUnable to set remote reference in modbus2mqtt/" + project.name 
+                        + ".\nUnable to set remote reference in modbus2mqtt/" + repository.name 
                         + "\nContinuing with invalid reference")
                 case "release":
                     # read package.json's version number build version tag
                     versionTag = "v" + readPackageJson(os.path.join('..', pr['name'] ,'package.json'))['version']
-                    releaseName = 'github:'+ projectsList.login +'/' + pr['name']+ '#' +versionTag
+                    releaseName = 'github:'+ repositorysList.login +'/' + pr['name']+ '#' +versionTag
                     npminstallargs.append(  releaseName)
                     npmuninstallargs.append( package )                    
                 case "pull":
-                    githubName = 'github:'+ projectsList.owner +'/' + pr['name']
+                    githubName = 'github:'+ repositorysList.owner +'/' + pr['name']
                     newgithubName = githubName + '#pull/' + str(pr['number']) + '/head'
                     if checkFileExistanceInGithubPullRequest('modbus2mqtt', pr['name'],str(pr['number']), 'package.json'):
                         npminstallargs.append(  newgithubName )  
@@ -553,7 +578,7 @@ def ensureNewPkgJsonVersion():
         return "v" + readPackageJson('package.json')['version']        
     return versionTag
 
-def dependenciesProject(project:Project,  projectsList: Projects,dependencytype: str, prProject:Project = None):
+def dependenciesRepository(repository:Repository,  repositorysList: Repositorys,dependencytype: str, prRepository:Repository = None):
 
     if dependencytype == 'release':
         # find unreleased commits
@@ -565,7 +590,7 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
             sha = sha.replace('\n','')
             out:str = executeSyncCommand(['git','diff', '--name-status', sha ]).decode("utf-8")
             changedInMain = out.count('\n')
-            js = ghcompare( project.name,projectsList.owner,"main", projectsList.owner + ":" + project.branch)
+            js = ghcompare( repository.name,repositorysList.owner,"main", repositorysList.owner + ":" + repository.branch)
             cmpResult = json.loads(js)
             changedInMain +=  int(cmpResult['behind_by'])
 
@@ -588,7 +613,7 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
         executeSyncCommand( ['git','switch', 'release'] )
         executeSyncCommand( ["git", "pull", "-X", "theirs"] )
         executeSyncCommand( ['git','merge', '-X','theirs', 'main'] )
-        updatePackageJsonReferences(project, projectsList, dependencytype, prProject)    
+        updatePackageJsonReferences(repository, repositorysList, dependencytype, prRepository)    
         if  getLocalChanges() > 0:
             # makes sure, the version number in local pgkJson is new
             # local changes are from updated dependencies            
@@ -604,55 +629,55 @@ def dependenciesProject(project:Project,  projectsList: Projects,dependencytype:
                     executeSyncCommand(["git", "push", "--atomic", "-f", "origin" , "release", versionTag])
                 else:
                     executeSyncCommand(["git", "push", "origin", "tag", versionTag])
-                eprint( "Released " + project.name + ":" + versionTag)
+                eprint( "Released " + repository.name + ":" + versionTag)
         else:
             if needsNewRelease:
-                raise SyncException( "Release failed: Tag '" + versionTag + "' exists in " + project.name )
+                raise SyncException( "Release failed: Tag '" + versionTag + "' exists in " + repository.name )
     else:
-        updatePackageJsonReferences(project, projectsList, dependencytype, prProject)
-        project.localChanges = getLocalChanges()
-        if project.localChanges > 0:
-            raise SyncException("File(s) have been updated in " + project.name + ".\nThere are local changes.\nPlease commit them first")
+        updatePackageJsonReferences(repository, repositorysList, dependencytype, prRepository)
+        repository.localChanges = getLocalChanges()
+        if repository.localChanges > 0:
+            raise SyncException("File(s) have been updated in " + repository.name + ".\nThere are local changes.\nPlease commit them first")
         
-def prepareGitForReleaseProject(project:Project,  projectsList: Projects):
-    if projectsList.login != projectsList.owner:
-       raise SyncException("Release is allowed for " + projectsList.owner + " only")
+def prepareGitForReleaseRepository(repository:Repository,  repositorysList: Repositorys):
+    if repositorysList.login != repositorysList.owner:
+       raise SyncException("Release is allowed for " + repositorysList.owner + " only")
     js = executeSyncCommand(['git', 'remote', '-v']).decode("utf-8")
-    match = re.search(r'' + projectsList.owner + '/', js)
+    match = re.search(r'' + repositorysList.owner + '/', js)
     if not match:
-       raise SyncException("Git origin is not " + projectsList.owner + '/' + project.name )
+       raise SyncException("Git origin is not " + repositorysList.owner + '/' + repository.name )
     executeSyncCommand(['git', 'switch', 'release']).decode("utf-8")
-    project.branch = "release"
-def npminstallProject(project:Project):
+    repository.branch = "release"
+def npminstallRepository(repository:Repository):
     executeSyncCommand(['npm','install'])
     
-projectFunctions = {
-    'compare' : compareProject,
-    'sync' : syncProject,
-    'npminstall':npminstallProject,
-    'syncpull': syncpullProject,
-    'test': testProject,
-    'push' : pushProject,
-    'createpull' : createpullProject,
+repositoryFunctions = {
+    'compare' : compareRepository,
+    'sync' : syncRepository,
+    'npminstall':npminstallRepository,
+    'syncpull': syncpullRepository,
+    'test': testRepository,
+    'push' : pushRepository,
+    'createpull' : createpullRepository,
     'newbranch': newBranch,
-    'readpulltext': readpulltextProject,
-    'dependencies': dependenciesProject,
-    'updatepulltext': updatepulltextProject,
-    'prepareGitForRelease': prepareGitForReleaseProject,
+    'readpulltext': readpulltextRepository,
+    'dependencies': dependenciesRepository,
+    'updatepulltext': updatepulltextRepository,
+    'prepareGitForRelease': prepareGitForReleaseRepository,
 }
 
 
-def doWithProjects( projects:Projects, command:str, *args:Any ): 
+def doWithRepositorys( repositorys:Repositorys, command:str, *args:Any ): 
     eprint("step: " + command, sep=' ', end='', flush=True )
     pwd = os.getcwd()
-    for project in projects.projects:
-        global currentProject 
-        eprint( project.name)
-        currentProject = project.name
-        eprint(" " + currentProject, sep=' ', end='', flush=True )
-        os.chdir(project.name)
+    for repository in repositorys.repositorys:
+        global currentRepository 
+        eprint( repository.name)
+        currentRepository = repository.name
+        eprint(" " + currentRepository, sep=' ', end='', flush=True )
+        os.chdir(repository.name)
         try:
-            projectFunctions[command]( project, *args)
+            repositoryFunctions[command]( repository, *args)
         finally:
             os.chdir(pwd)
     eprint("")

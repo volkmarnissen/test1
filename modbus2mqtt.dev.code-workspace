@@ -13,10 +13,6 @@
 			"path": "angular"
 		},
 		{
-			"name": "modbus2mqtt",
-			"path": "."
-		},	
-		{
 			"name": "server",
 			"path": "server"
 		},
@@ -31,11 +27,15 @@
 		{
 			"name": "test1",
 			"path": "test1"
-		}	,
+		},
 		{
 			"name": "test2",
 			"path": "test2"
-		}	
+		},
+		{
+			"name": "KC868A16 Pulsecounter",
+			"path": "../platformio/kc868pulsecounter/KC868A16 Pulsecounter"
+		}
 	],
 	"settings": {
 		"jest.disabledWorkspaceFolders": [

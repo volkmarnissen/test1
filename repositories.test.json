@@ -1,7 +1,7 @@
 {
     "owner": "modbus2mqtt",
     "mainproject":"test3",
-    "projects": [
+    "repositories": [
     {
       "name" : "test1"
     },

@@ -10,7 +10,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "projects.test.json", "init", "-b", "feature" ], 
+             "args": ["-p", "repositories.test.json", "init", "-b", "feature" ], 
             "console": "integratedTerminal"
         },
         {
@@ -19,7 +19,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "projects.test.json", "createpull" ], 
+             "args": ["-p", "repositories.test.json", "createpull" ], 
             "console": "integratedTerminal"
         },
 
@@ -30,7 +30,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "projects.test.json", "sync" ], 
+             "args": ["-p", "repositories.test.json", "sync" ], 
             "console": "integratedTerminal"
         },
         {
@@ -39,7 +39,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "projects.test.json", "dependencies", "remote" ], 
+             "args": ["-p", "repositories.test.json", "dependencies", "remote" ], 
             "console": "integratedTerminal"
         }, 
         {
@@ -48,7 +48,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "projects.test.json", "release" ], 
+             "args": ["-p", "repositories.test.json", "release" ], 
             "console": "integratedTerminal"
         },         
         {
@@ -57,7 +57,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "projects.test.json", "dependencies", "pull", 
+             "args": ["-p", "repositories.test.json", "dependencies", "pull", 
               "--pullrequest","test3:2" ], 
             "console": "integratedTerminal"
         },
@@ -67,7 +67,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}/../x",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "../modbus2mqtt.dev/projects.test.json", "syncpull", "test1:5" , "pull5"], 
+             "args": ["-p", "../modbus2mqtt.dev/repositories.test.json", "syncpull", "test1:5" , "pull5"], 
             "console": "integratedTerminal"
         },
         {
@@ -77,6 +77,15 @@
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
              "args": [ "test"], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls testorwait",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": [ "testorwait", "angular:3", "Test\\nrequired PRs: angular:3, server:105"], 
             "console": "integratedTerminal"
         },
         {
