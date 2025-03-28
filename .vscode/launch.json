@@ -96,6 +96,15 @@
             "program": "${workspaceFolder}/bin/pulls.py",
              "args": [ "createpull"], 
             "console": "integratedTerminal"
+        },
+        {
+            "name": "releaseAddon development",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/releaseAddon.py",
+            "args": ["-r"],
+            "console": "integratedTerminal"
         }
     ]
 }

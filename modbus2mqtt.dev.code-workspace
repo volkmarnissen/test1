@@ -35,6 +35,9 @@
 		{
 			"name": "KC868A16 Pulsecounter",
 			"path": "../platformio/kc868pulsecounter/KC868A16 Pulsecounter"
+		},
+		{
+			"path": "hassio-addon-repository"
 		}
 	],
 	"settings": {

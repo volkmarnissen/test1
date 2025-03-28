@@ -119,9 +119,9 @@ class StreamThread ( Thread ):
             if line == '':
                 break
             
-def executeSyncCommand(cmdArgs: list[str], *args, **kwargs)-> str:
+def executeSyncCommand(cmdArgs: list[str], cwd=os.getcwd() , *args, **kwargs)-> str:
     proc = subprocess.Popen(cmdArgs,
-	cwd=os.getcwd(),
+	cwd=cwd,
  	stdout=subprocess.PIPE,
  	stderr=subprocess.PIPE) 
     out, err = proc.communicate()
