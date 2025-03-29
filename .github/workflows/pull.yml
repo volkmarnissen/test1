@@ -1,0 +1,35 @@
+name: Pull/Run Unit tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, reopened, edited]
+  workflow_call:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: 'Test E2E'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: modbus2mqtt/modbus2mqtt.dev
+          path: .
+      - name: initialize environment for this
+        run: |
+          gh auth status
+          bin/pulls.py -p repositories.test.json init -b main
+          bin/pulls.py -p repositories.test.json syncpull ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} pull${{github.event.number}} "pull${{github.event.pull_request.body}}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: 20.x
+      - name: Run tests
+        id: test
+        run: |
+          bin/pulls.py -p repositories.test.json testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"
+
+      
