@@ -112,6 +112,8 @@ def initRepositorys(branch):
         # fork will fail if repository it is already forked.The error will be ignored
         owner = repositorysList.login
         pwd = os.getcwd()
+        if repository.branch == None:
+            repository.branch = branch
         if not repositories.isRepositoryForked(repository.name ):
             owner = repositorysList.owner    
         try:
@@ -142,7 +144,7 @@ def dependencies( repositoryList, type:str, *args):
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers(help="sub-commands")
 
-parser.add_argument("-p", "--repositorys", help="repositories.json file ",  nargs='?', default='repositories.json', const='repositories.json')
+parser.add_argument("-p", "--repositories", help="repositories.json file ",  nargs='?', default='repositories.json', const='repositories.json')
 
 parser_init = subparsers.add_parser("init", help="init: forks and clones repositories")
 parser_init.add_argument("-b", "--branch", help="New branch name",  nargs='?', default='main')
@@ -163,6 +165,7 @@ parser_sync.set_defaults(command='sync')
 
 parser_test = subparsers.add_parser("test", help="test: execute npm test for all repositorys")
 parser_test.set_defaults(command='test')
+
 parser_testorwait = subparsers.add_parser("testorwait", help="Executed via github event pull_request")
 parser_testorwait.set_defaults(command='testorwait')
 parser_testorwait.add_argument("pullrequest", help="Pull request <repository name>:<number> ", type = str)
@@ -180,7 +183,7 @@ parser_dependencies.add_argument("-r", "--pullrequest", help="Pull request <repo
 parser_dependencies.set_defaults(command='dependencies')
 
 args = parser.parse_args()
-repositorysList = repositories.readrepositorys(args.repositorys)
+repositorysList = repositories.readrepositorys(args.repositories)
 
 try:   
     match args.command:
@@ -199,21 +202,24 @@ try:
             repositories.doWithRepositorys(repositorysList,'syncpull',repositorysList, prs, args.branch)
             repositories.doWithRepositorys(repositorysList,'npminstall')
         case "test":
-                    repositories.sendTestStatus(repositorysList, repositories.TestStatus.running,False)
-                    repositories.doWithRepositorys(repositorysList,'test', repositorysList)
-                    status = repositories.getTestResultStatus(repositorysList)
-                    repositories.sendTestStatus(repositorysList, status)
-                    if status != repositories.TestStatus.success:
-                        exit(2)
+            repositories.testRepositories(args.repositories)
         case "testorwait":
               pr  = repositories.getPullrequestFromString(args.pullrequest)
               requiredPrs = repositories.getRequiredReposFromPRDescription(args.pullbody,pr)
+              maintestPullrequest = None
               for idx, p in enumerate(requiredPrs):
-                  if p.name == pr.name and pr.number == p.number and idx == 0:
-                      # args.pullrequest belongs to the first repository
-                      repositories.testRepository( )
-
-              repositories.eprint(pr)
+                if p.name == pr.name and pr.number == p.number and idx == 0:
+                    maintestPullrequest = p
+              if maintestPullrequest == None:
+                  raise repositories.SyncException( "Error: " + args.pullrequest + " is not in " + args.pulltext)
+              for p in requiredPrs:
+                if p.name != maintestPullrequest.name:
+                    # wait happens here. If the testrunner action fails, this will exit(2)
+                    # otherwise exit(0)
+                    repositories.waitForMainTestPullRequest(repositorysList,maintestPullrequest)
+                else:
+                    # Tests will be executed in the workflow itself
+                    print("type=testrunner")                       
         case "createpull":
             if repositorysList.owner == repositorysList.login:
                 raise repositories.SyncException("Owner must be different from logged in user: " + repositorysList.owner + " == " + repositorysList.login )

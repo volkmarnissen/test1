@@ -284,23 +284,20 @@ def waitForMainTestPullRequest(repositories:Repositorys, mainTestPullRequest:Pul
                         if checkrun.completed:
                             if checkrun.success:
                                 eprint( mainTestPullRequest.name + ":" + mainTestPullRequest.number + " finished with success")
-                                exit(0)
+                                print("status=success" )
+                                return
                             else:
                                 eprint( mainTestPullRequest.name + ":" + mainTestPullRequest.number + " finished with failure")
-                                exit(2)
+                                print("status=failure" )
+                                return
                     case _:
                         # try again later
                         time.sleep(30)
     # check run not found or other issues. It should stop with exit() when checkrun is finished
     SyncException( "Unable validate check run for pull Request " + mainTestPullRequest.name + ":" +  mainTestPullRequest.number )
 
-def testRepository(repository:Repository, repositories:Repositorys, mainTestPullRequest:PullRequest):
-        if repository.name == mainTestPullRequest.name:
-            eprint( executeSyncCommand(["npm", "run", "test"]).decode("utf-8"))
-        else:
-            for mr in repositories.repositorys:
-                if mr.name == mainTestPullRequest.name:
-                    waitForMainTestPullRequest(mr, repositories,mainTestPullRequest)
+def testRepositories(repositoriesFile:str):
+            eprint( executeSyncCommand(["bin/testall.py", repositoriesFile]).decode("utf-8"))
 
 # syncs main from original github source to local git branch (E.g. 'feature')
 def syncRepository(repository: Repository, repositorys:Repositorys):
