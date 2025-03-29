@@ -197,11 +197,20 @@ def getTestResultStatus(repositorys:Repositorys):
             return TestStatus.failed
     else:
         return TestStatus.success
-        
+def hasLoginFeatureBranch(repository:Repository, repositorys:Repositorys):
+    try:
+        line= executeSyncCommand(['git', 'ls-remote', '--heads', repositorys.login,  'refs/heads/' + repository.branch]).decode("utf-8")
+        if len(line)> 0:
+            return True
+        return False
+    except SyncException as err:
+        return False        
 def setUrl(repository:Repository, repositorys:Repositorys):
     origins = [repositorys.owner]
     if isRepositoryForked( repository.name):
         origins.append(repositorys.login)
+        if hasLoginFeatureBranch(repository, repositorys):
+            origins.append(repositorys.login)
     for origin in origins:
         cmd = ['git', 'remote', 'set-url', origin, getGitPrefix(repositorys)  + repositorys.login + '/' + repository.name + '.git' ]
         try:
@@ -209,11 +218,13 @@ def setUrl(repository:Repository, repositorys:Repositorys):
         except SyncException as err:
             cmd[2]= 'add'
             executeSyncCommand( cmd  )
-            try:
-                executeSyncCommand([ 'git','branch','--set-upstream-to='+ origin + '/' + repository.branch] )
-            except SyncException as err:
-                if not "the requested upstream branch" in err.args[0]:
-                    raise err
+            
+    if hasLoginFeatureBranch(repository, repositorys):
+        executeCommand([ 'git','fetch' , repositorys.login, repository.branch ])
+        executeSyncCommand([ 'git','branch','--set-upstream-to='+ repositorys.login + '/' + repository.branch] )
+    else:
+        executeSyncCommand([ 'git','branch','--set-upstream-to='+ repositorys.owner + '/main'] )
+
    
 def sendTestStatus( repositorys:Repositorys, status:TestStatus, update:bool=True):
     try:
