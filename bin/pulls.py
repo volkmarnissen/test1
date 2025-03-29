@@ -107,6 +107,7 @@ def createPullRequests( repositorysList:repositories.Repositorys, issue:Issue):
                 repositories.eprint("Creating aborted " + arg)
         exit(2)
 def initRepositorys(branch):
+    repositories.eprint("initRepository: " + branch)
     pwd = os.getcwd()
     for repository in repositorysList.repositorys:   
         # fork will fail if repository it is already forked.The error will be ignored

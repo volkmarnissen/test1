@@ -217,6 +217,7 @@ def addRemote(repositories:Repositorys, repository:Repository, origin:str):
      cmd = ['git', 'remote', 'add', origin, getGitPrefix(repositories)  + origin + '/' + repository.name + '.git' ]
      executeSyncCommand(cmd)
 def setUrl(repository:Repository, repositorys:Repositorys):
+    eprint("setUrl")
     origins = [repositorys.owner]
     if isRepositoryForked( repository.name):
         origins.append(repositorys.login)
@@ -698,7 +699,6 @@ repositoryFunctions = {
     'sync' : syncRepository,
     'npminstall':npminstallRepository,
     'syncpull': syncpullRepository,
-    'test': testRepository,
     'push' : pushRepository,
     'createpull' : createpullRepository,
     'newbranch': newBranch,
