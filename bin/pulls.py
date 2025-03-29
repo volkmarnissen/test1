@@ -107,15 +107,23 @@ def createPullRequests( repositorysList:repositories.Repositorys, issue:Issue):
                 repositories.eprint("Creating aborted " + arg)
         exit(2)
 def initRepositorys(branch):
+    pwd = os.getcwd()
     for repository in repositorysList.repositorys:   
         # fork will fail if repository it is already forked.The error will be ignored
         owner = repositorysList.login
+        pwd = os.getcwd()
         if not repositories.isRepositoryForked(repository.name ):
             owner = repositorysList.owner    
-        if not os.path.exists( repository.name ):
-            repositories.executeCommand(['git','clone', repositories.getGitPrefix(repositorysList)  + 
-            owner + '/' + repository.name + '.git' , '--origin', owner ])
+        try:
+            if not os.path.exists( repository.name ):
+                repositories.executeCommand(['git','clone', repositories.getGitPrefix(repositorysList)  + 
+                owner + '/' + repository.name + '.git' , '--origin', owner ])
+            else:
+                os.chdir(repository.name)
             repositories.setUrl(repository,repositorysList)
+   
+        finally:
+            os.chdir(pwd)
     repositories.doWithRepositorys(repositorysList,'newbranch', branch)
     repositories.doWithRepositorys(repositorysList,'npminstall')
 
@@ -148,6 +156,7 @@ parser_syncpull = subparsers.add_parser("syncpull", help="sync: pull request fro
 parser_syncpull.set_defaults(command='syncpull')
 parser_syncpull.add_argument("pullrequest", help="Pull request <repository name>:<number> in repository  e.g 'angular:14'" , type= str)
 parser_syncpull.add_argument("branch", help="New branch for the Pull request " , type= str)
+parser_syncpull.add_argument("pulltext", help="Pulltext " , type= str)
 
 parser_sync = subparsers.add_parser("sync", help="sync: pulls main and current branch from root repositories")
 parser_sync.set_defaults(command='sync')
@@ -185,7 +194,8 @@ try:
             repositories.doWithRepositorys(repositorysList,'sync',repositorysList)
         case "syncpull":
             pr  = repositories.getPullrequestFromString(args.pullrequest)
-            prs = repositories.getRequiredPullrequests(repositories.Repository(pr['name']), repositorysList.owner, pr['name'] + ":" + str(pr['number']))
+            repositories.Repository(pr.name)
+            prs = repositories.getRequiredPullrequests(repositories.Repository(pr.name),  pr, pulltext=args.pulltext)
             repositories.doWithRepositorys(repositorysList,'syncpull',repositorysList, prs, args.branch)
             repositories.doWithRepositorys(repositorysList,'npminstall')
         case "test":

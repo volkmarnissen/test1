@@ -40,6 +40,7 @@ class PullRequest:
 class Repository:      
     def __init__(self, name:str):
         self.name = name
+        self.branch = None
         self.pulltexts =[]
         self.remoteBranch = None
     def _is_valid_operand(self, other):
@@ -131,7 +132,8 @@ def executeSyncCommandWithCwd(cmdArgs: list[str], cwdP:str, *args, **kwargs)-> s
     proc.returncode
     if proc.returncode != 0:
         raise SyncException( cwdP +':'+ err.decode("utf-8"), ' '.join(cmdArgs), out.decode("utf-8"))
-    eprint(err.decode("utf-8"))
+    if len(err)>0:    
+        eprint(err.decode("utf-8"))
     return out
 
 def executeSyncCommand(cmdArgs: list[str], *args, **kwargs)-> str:
@@ -199,30 +201,36 @@ def getTestResultStatus(repositorys:Repositorys):
         return TestStatus.success
 def hasLoginFeatureBranch(repository:Repository, repositorys:Repositorys):
     try:
+        if repository.branch == None:
+            return False
         line= executeSyncCommand(['git', 'ls-remote', '--heads', repositorys.login,  'refs/heads/' + repository.branch]).decode("utf-8")
         if len(line)> 0:
             return True
         return False
     except SyncException as err:
         return False        
+def checkRemote( remote:str):
+        out = executeSyncCommand(['git', 'remote','-v',]).decode("utf-8")
+        return re.match(r'^' + remote, out)
+
+def addRemote(repositories:Repositorys, repository:Repository, origin:str):
+     cmd = ['git', 'remote', 'add', origin, getGitPrefix(repositories)  + origin + '/' + repository.name + '.git' ]
+     executeSyncCommand(cmd)
 def setUrl(repository:Repository, repositorys:Repositorys):
     origins = [repositorys.owner]
     if isRepositoryForked( repository.name):
         origins.append(repositorys.login)
         if hasLoginFeatureBranch(repository, repositorys):
             origins.append(repositorys.login)
+
     for origin in origins:
-        cmd = ['git', 'remote', 'set-url', origin, getGitPrefix(repositorys)  + repositorys.login + '/' + repository.name + '.git' ]
-        try:
-            executeSyncCommand( cmd  )
-        except SyncException as err:
-            cmd[2]= 'add'
-            executeSyncCommand( cmd  )
-            
+        if not checkRemote(origin):
+            addRemote(repositorys,repository, origin)
     if hasLoginFeatureBranch(repository, repositorys):
-        executeCommand([ 'git','fetch' , repositorys.login, repository.branch ])
+        executeCommand([ 'git','fetch' , origin, repository.branch ])
         executeSyncCommand([ 'git','branch','--set-upstream-to='+ repositorys.login + '/' + repository.branch] )
     else:
+        executeSyncCommand([ 'git','fetch', repositorys.owner , 'main'] )
         executeSyncCommand([ 'git','branch','--set-upstream-to='+ repositorys.owner + '/main'] )
 
    
@@ -340,13 +348,15 @@ def syncRepository(repository: Repository, repositorys:Repositorys):
     repository.gitChanges = out.count('\n')
 
 # syncs main from original github source to local git branch (E.g. 'feature')
-def syncpullRepository(repository: Repository, repositorys:Repositorys, prs:Dict[str,int], branch:str):
+def syncpullRepository(repository: Repository, repositorys:Repositorys, prs:list[PullRequest], branch:str):
     executeSyncCommand(['git','switch', 'main'])
     for pr in prs:
         found = False
-        if not found and repository.name == pr["name"]:
+        if not found and repository.name == pr.name:
             found = True
-            executeSyncCommand(['git', 'fetch', repositorys.owner, 'pull/' + str(pr['number'])+ '/head:' + branch ])
+            checkRemote(repositorys.owner)
+            branch = 'pull'+ str(pr.number)
+            executeSyncCommand(['git', 'fetch', repositorys.owner, 'pull/' + str(pr.number)+ '/head:'+ branch ])
             executeSyncCommand(['git','switch', branch])
     if not found:
         #sync to main branch
@@ -503,9 +513,10 @@ def getRequiredReposFromPRDescription(prDescription:str,pullrequest:PullRequest)
             rc.append(pullrequest)
     return rc
 
-def getRequiredPullrequests( repository:Repository, pullrequest:PullRequest )->list[PullRequest]:
-    text = getpulltext( repository, pullrequest )
-    return getRequiredReposFromPRDescription(text,pullrequest)
+def getRequiredPullrequests( repository:Repository, pullrequest:PullRequest, pulltext:str = None, owner:str=None )->list[PullRequest]:
+    if pulltext == None and owner != None:
+        pulltext = getpulltext( repository, owner, pullrequest.name, pullrequest.number )
+    return getRequiredReposFromPRDescription(pulltext,pullrequest)
 
 def updatepulltextRepository(repository:Repository, repositorysList: Repositorys, pullRepositorys):
     requiredText = "required PRs: "
@@ -535,7 +546,7 @@ def readPackageJson( dir:str)->Dict[str,any]:
 def updatePackageJsonReferences(repository:Repository,  repositorysList: Repositorys,dependencytype: str, prRepository:Repository):
     prs:list[PullRequest] = []
     if dependencytype == 'pull':
-        prs = getRequiredPullrequests(prRepository, repositorysList.owner, PullRequest(prRepository.name ,prRepository.pullrequestid))
+        prs = getRequiredPullrequests(prRepository,  PullRequest(prRepository.name ,prRepository.pullrequestid), owner=repositorysList.owner)
         if prRepository == None:
             SyncException("pull requires pull request parameter -r")
         else: # do it for all repositorys

@@ -10,7 +10,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "repositories.test.json", "init", "-b", "feature" ], 
+             "args": ["-p", "repositories.test.json", "init", "-b", "main" ], 
             "console": "integratedTerminal"
         },
         {
@@ -67,7 +67,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}/../x",
             "program": "${workspaceFolder}/bin/pulls.py",
-             "args": ["-p", "../modbus2mqtt.dev/repositories.test.json", "syncpull", "test1:5" , "pull5"], 
+             "args": ["-p", "../modbus2mqtt.dev/repositories.test.json", "syncpull", "test1:5" , "pull5", "Single line only multi line is not supported by vscode"], 
             "console": "integratedTerminal"
         },
         {
