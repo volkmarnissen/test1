@@ -220,6 +220,7 @@ try:
                     repositories.waitForMainTestPullRequest(repositorysList,maintestPullrequest)
                 else:
                     # Tests will be executed in the workflow itself
+                    repositories.testRepositories(args.repositories)
                     print("type=testrunner")                       
         case "createpull":
             if repositorysList.owner == repositorysList.login:
