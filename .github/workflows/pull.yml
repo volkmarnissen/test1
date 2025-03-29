@@ -30,6 +30,8 @@ jobs:
       - name: Run tests
         id: test
         run: |
-          bin/pulls.py -p repositories.test.json testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"
-
+          bin/pulls.py -p repositories.test.json testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"    
+        env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+       
       
