@@ -33,5 +33,20 @@ jobs:
           bin/pulls.py -p repositories.test.json testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"    
         env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name "Cypress tests"
+        if: steps.test.outputs.type == 'testrunner'
+      - name: Packages and system services for e2e Tests
+        run: server/cypress/servers/installPackages
+      - name: Local services for e2e Tests
+        if: steps.test.outputs.type == 'testrunner'
+        run: server/cypress/servers/startRunningServers
+      - name: Cypress run
+        if: steps.test.outputs.type == 'testrunner'
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: server
+          install: false
+
+
        
       

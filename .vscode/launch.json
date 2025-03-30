@@ -55,7 +55,7 @@
             "name": "pulls dependency with pullrequest",
             "type": "debugpy",
             "request": "launch",
-            "cwd": "${workspaceFolder}",
+            "cwd": "~/modbus2mqtt.dev",
             "program": "${workspaceFolder}/bin/pulls.py",
              "args": ["-p", "repositories.test.json", "dependencies", "pull", 
               "--pullrequest","test3:2" ], 

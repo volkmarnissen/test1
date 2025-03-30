@@ -12,7 +12,8 @@
           },
         "closed_at": null,
         "head": {
-          "ref": "feature"
+          "ref": "feature",
+          "name": "main"
          },
         "number": 5,
         "title": "Test Pullrequest",
