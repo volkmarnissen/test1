@@ -1,5 +1,7 @@
 {
-      "actX": "true",
+      "act": { 
+        "owner": "modbus2mqtt"
+      },
       "action": "opened",
       "number": 5,
       "pull_request": {
@@ -8,17 +10,21 @@
           "label": "modbus2mqtt:main",
           "ref": "main",
           "repo": {
-            "name": "feature"
+            "name": "test1"
+          },
+          "owner":{
+            "login": "modbus2mqtt"
           },
         "closed_at": null,
         "head": {
           "ref": "feature",
-          "name": "main"
+          "name": "test1"
          },
         "number": 5,
-        "title": "Test Pullrequest",
-        "body": "Some Text\nrequired PRs: test1:1"
-      }
+        "title": "Test Pullrequest"
+      },
+      "body": "Some Text\nrequired PRs: test1:5"
+     
     }
   }
   
