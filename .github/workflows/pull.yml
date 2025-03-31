@@ -21,6 +21,7 @@ jobs:
           gh auth status
           bin/pulls.py -p repositories.test.json init -b main
           bin/pulls.py -p repositories.test.json syncpull ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} pull${{github.event.number}} "pull${{github.event.pull_request.body}}"
+          bin/pulls.py -p repositories.test.json install
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
@@ -33,9 +34,8 @@ jobs:
           bin/pulls.py -p repositories.test.json testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"    
         env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name "Cypress tests"
-        if: steps.test.outputs.type == 'testrunner'
       - name: Packages and system services for e2e Tests
+        if: steps.test.outputs.type == 'testrunner'
         run: server/cypress/servers/installPackages
       - name: Local services for e2e Tests
         if: steps.test.outputs.type == 'testrunner'
