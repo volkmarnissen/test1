@@ -10,6 +10,9 @@
           "repo": {
             "name": "test1"
           },
+          "owner":{
+            "login": "modbus2mqtt"
+          },
         "closed_at": null,
         "head": {
           "ref": "feature",
