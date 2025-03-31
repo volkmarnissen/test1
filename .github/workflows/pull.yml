@@ -31,7 +31,7 @@ jobs:
           echo "syncpull =========="
           bin/pulls.py -p repositories.test.json $owner syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "${{github.event.pull_request.body}}" pull${{github.event.pull_request.number}} 
           echo "install =========="
-          bin/pulls.py -p repositories.test.json $owner depencencies local
+          bin/pulls.py -p repositories.test.json $owner dependencies local
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
