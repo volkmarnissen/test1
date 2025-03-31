@@ -36,7 +36,11 @@ jobs:
       - name: Run tests
         id: test
         run: |
-          bin/pulls.py -p repositories.test.json -o ${{github.event.pull_request.base.owner.login}} testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"
+          bin/pulls.py -p repositories.test.json -o ${{github.event.pull_request.base.owner.login}} testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"  >> "$GITHUB_OUTPUT"
+          if [ -d server/cypress/e2e ]
+          then
+             echo "runcypress=true"  >> "$GITHUB_OUTPUT"
+          fi
         env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Packages and system services for e2e Tests
