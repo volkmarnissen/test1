@@ -36,17 +36,18 @@ jobs:
       - name: Run tests
         id: test
         run: |
-          bin/pulls.py -p repositories.test.json -o ${{github.repository_owner}} testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"   
+          bin/pulls.py -p repositories.test.json -o ${{github.repository_owner}} testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"  >> $GITHUB_OUTPUT
+          if [ -d server/cypress/e2e ]; then echo "runcypress=true" >> $GITHUB_OUTPUT
         env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Packages and system services for e2e Tests
-        if: steps.test.outputs.type == 'testrunner'
+        if: ${{ (steps.test.outputs.type == 'testrunner' == true) && (steps.test.outputs.runcypress == 'true')  }} 
         run: server/cypress/servers/installPackages
       - name: Local services for e2e Tests
-        if: steps.test.outputs.type == 'testrunner'
+        if: ${{ (steps.test.outputs.type == 'testrunner' == true) && (steps.test.outputs.runcypress == 'true')  }} 
         run: server/cypress/servers/startRunningServers
       - name: Cypress run
-        if: steps.test.outputs.type == 'testrunner'
+        if: ${{ (steps.test.outputs.type == 'testrunner' == true) && (steps.test.outputs.runcypress == 'true')  }} 
         uses: cypress-io/github-action@v6
         with:
           working-directory: server
