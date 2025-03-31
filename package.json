@@ -4,6 +4,7 @@
   "description": "changes in modbus2mqtt",
   "main": "index.js",
   "scripts": {
+
      "test": "sh -c 'echo testing... && sleep 10 && exit 0'"
  },
   "author": "",
