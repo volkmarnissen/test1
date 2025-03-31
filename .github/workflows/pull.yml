@@ -22,7 +22,7 @@ jobs:
           echo "=========="
           ls 
           echo "=========="
-          bin/pulls.py -p repositories.test.json init -b main
+          bin/pulls.py -p repositories.test.json init -b main -o ${{github.repository_owner}}
           echo "syncpull =========="
           bin/pulls.py -p repositories.test.json syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "${{github.event.pull_request.body}}" pull${{github.event.pull_request.number}} 
           echo "install =========="
