@@ -26,6 +26,7 @@ jobs:
           else
             owner="-o ${{github.repository_owner}}"
           fi
+          echo $owner >&2
           bin/pulls.py -p repositories.test.json  $owner init -b main 
           echo "syncpull =========="
           bin/pulls.py -p repositories.test.json -o ${{github.event.pull_request.base.owner.login}} syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "${{github.event.pull_request.body}}" pull${{github.event.pull_request.number}} 
