@@ -1,5 +1,5 @@
 {
-      "actX": "true",
+      "owner": "modbus2mqtt",
       "action": "opened",
       "number": 5,
       "pull_request": {
