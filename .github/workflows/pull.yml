@@ -36,7 +36,7 @@ jobs:
       - name: Run tests
         id: test
         run: |
-          bin/pulls.py -p -o ${{github.repository_owner}} repositories.test.json testorwait   
+          bin/pulls.py -p repositories.test.json -o ${{github.repository_owner}} testorwait   
         env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Packages and system services for e2e Tests
