@@ -19,15 +19,13 @@ jobs:
       - name: initialize environment for this
         run: |
           gh auth status
-          echo "=========="
-          ls 
-          echo "=========="
+
           owner=""
-          if [ "${{github.event.owner}}" != '' ]
+          if [ "${{github.event.act.owner}}" != '' ]
           then
-            owner = "-o ${{github.event.owner}}"
+            owner="-o ${{github.event.act.owner}}"
           else
-            owner = "-o ${{github.repository_owner}}"
+            owner="-o ${{github.repository_owner}}"
           fi
           bin/pulls.py -p repositories.test.json  $owner init -b main 
           echo "syncpull =========="
