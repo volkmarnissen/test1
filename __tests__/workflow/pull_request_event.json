@@ -1,0 +1,25 @@
+{
+      "actX": "true",
+      "action": "opened",
+      "number": 5,
+      "pull_request": {
+
+        "base": {
+          "label": "modbus2mqtt:main",
+          "ref": "main",
+          "repo": {
+            "name": "test1"
+          },
+        "closed_at": null,
+        "head": {
+          "ref": "feature",
+          "name": "test1"
+         },
+        "number": 5,
+        "title": "Test Pullrequest"
+      },
+      "body": "Some Text\nrequired PRs: test1:5"
+     
+    }
+  }
+  

@@ -1,11 +1,12 @@
 {
   "name": "@modbus2mqtt/test1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "changes in modbus2mqtt",
   "main": "index.js",
   "scripts": {
-    "test": "sh -c 'sleep 10 && exit 2'"
-  },
+
+     "test": "sh -c 'echo testing... && sleep 10 && exit 0'"
+ },
   "author": "",
   "license": "MIT"
 }

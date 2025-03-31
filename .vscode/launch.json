@@ -1,0 +1,110 @@
+{
+    // Verwendet IntelliSense zum Ermitteln möglicher Attribute.
+    // Zeigen Sie auf vorhandene Attribute, um die zugehörigen Beschreibungen anzuzeigen.
+    // Weitere Informationen finden Sie unter https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "pull init",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "repositories.test.json", "init", "-b", "main" ], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pull create",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "repositories.test.json", "createpull" ], 
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "pulls sync",
+            
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "repositories.test.json", "sync" ], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls dependencies remote",            
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "repositories.test.json", "dependencies", "remote" ], 
+            "console": "integratedTerminal"
+        }, 
+        {
+            "name": "pulls release",            
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "repositories.test.json", "release" ], 
+            "console": "integratedTerminal"
+        },         
+        {
+            "name": "pulls dependency with pullrequest",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "~/modbus2mqtt.dev",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "repositories.test.json", "dependencies", "pull", 
+              "--pullrequest","test3:2" ], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls pullsync",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/../x",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": ["-p", "../modbus2mqtt.dev/repositories.test.json", "syncpull", "test1:5" , "pull5", "Single line only multi line is not supported by vscode"], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls test",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": [ "test"], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls testorwait",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": [ "testorwait", "angular:3", "Test\\nrequired PRs: angular:3, server:105"], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pulls createpull",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/pulls.py",
+             "args": [ "createpull"], 
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "releaseAddon development",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/bin/releaseAddon.py",
+            "args": ["-r"],
+            "console": "integratedTerminal"
+        }
+    ]
+}
