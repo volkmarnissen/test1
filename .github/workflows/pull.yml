@@ -20,8 +20,11 @@ jobs:
         run: |
           gh auth status
           bin/pulls.py -p repositories.test.json init -b main
-          bin/pulls.py -p repositories.test.json syncpull ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} pull${{github.event.number}} "pull${{github.event.pull_request.body}}"
-          bin/pulls.py -p repositories.test.json install
+          echo "syncpull =========="
+          echo  bin/pulls.py -p repositories.test.json syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "pull${{github.event.body}}" pull${{github.event.number}} 
+          bin/pulls.py -p repositories.test.json syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "pull${{github.event.body}}" pull${{github.event.number}} 
+          echo "install =========="
+           bin/pulls.py -p repositories.test.json install
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
