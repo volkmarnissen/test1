@@ -29,9 +29,9 @@ jobs:
           echo $owner >&2
           bin/pulls.py -p repositories.test.json  $owner init -b main 
           echo "syncpull =========="
-          bin/pulls.py -p repositories.test.json -o ${{github.event.pull_request.base.owner.login}} syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "${{github.event.pull_request.body}}" pull${{github.event.pull_request.number}} 
+          bin/pulls.py -p repositories.test.json -o $owner syncpull --pullrequest ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} --pulltext "${{github.event.pull_request.body}}" pull${{github.event.pull_request.number}} 
           echo "install =========="
-          bin/pulls.py -p repositories.test.json -o ${{github.event.pull_request.base.owner.login}} depencencies local
+          bin/pulls.py -p repositories.test.json -o $owner depencencies local
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
@@ -41,7 +41,7 @@ jobs:
       - name: Run tests
         id: test
         run: |
-          bin/pulls.py -p repositories.test.json -o ${{github.event.pull_request.base.owner.login}} testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"  >> "$GITHUB_OUTPUT"
+          bin/pulls.py -p repositories.test.json -o $owner testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"  >> "$GITHUB_OUTPUT"
           if [ -d server/cypress/e2e ]
           then
              echo "runcypress=true"  >> "$GITHUB_OUTPUT"
