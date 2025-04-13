@@ -20,6 +20,7 @@ jobs:
         id: init
         run: |
           gh auth status
+
           owner=""
           if [ "${{github.event.act.owner}}" != '' ]
           then
@@ -42,7 +43,7 @@ jobs:
       - name: Run tests
         id: test
         run: |
-          bin/pulls.py -p repositories.test.json -o ${{steps.init.outputs.owner}} testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"  >> "$GITHUB_OUTPUT"
+          bin/pulls.py -p repositories.test.json -o $owner testorwait ${{github.event.pull_request.base.repo.name}}:${{github.event.number}} "${{github.event.pull_request.body}}"  >> "$GITHUB_OUTPUT"
           if [ -d server/cypress/e2e ]
           then
              echo "runcypress=true"  >> "$GITHUB_OUTPUT"
